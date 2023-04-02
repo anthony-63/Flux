@@ -14,3 +14,8 @@ opt-level = 3
 [dependencies]
 nannou = "*"
 rodio = "*"
+
+[workspace]
+members = [
+    "map-creator",
+]
