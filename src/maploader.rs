@@ -30,7 +30,7 @@ impl FluxMaploader {
 
         // you can probably use an iterator here, but honestly it would probably increase the complexity.
         // ^^ or you can just use another crate to do this for you.
-        // you can also add addition error checking, but im too lazy.
+        // you can also add additional error checking, but im too lazy.
 
         let mut index = 0;
         
