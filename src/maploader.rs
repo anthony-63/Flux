@@ -26,22 +26,37 @@ impl FluxMaploader {
     pub fn load_map(path: String) -> FluxMap {
         let mut map = FluxMap::empty();
         
-        let flm_data = match std::str::from_utf8(&std::fs::read(&path).expect("Failed to read map file. SHOULD NOT HAPPEN???")) {
-            Ok(v) => v.to_owned(),
-            Err(e) => panic!("Invalid utf-8 sequence: {}", e),
-        };
+        let flm_data = std::fs::read(&path).expect("Failed to read map file. SHOULD NOT HAPPEN???");
 
-        let sections: Vec<_> = flm_data.split(SUPER_SPECIAL_SEP).collect();
-        let meta = sections[0].to_string();
-        map.map_data = sections[1].to_string();
-        map.mp3_data = sections[2].as_bytes().to_vec();
+        // you can probably use an iterator here, but honestly it would probably increase the complexity.
+        // ^^ or you can just use another crate to do this for you.
+        // you can also add addition error checking, but im too lazy.
 
-        let meta_sections: Vec<_> = meta.split(",").collect();
-        map.artist = meta_sections[0].to_string();
-        map.song_name = meta_sections[1].to_string();
-        map.mapper = meta_sections[2].to_string();
+        let mut index = 0;
+        
+        let artist_size = u16::from_be_bytes((&flm_data[index..index+2]).try_into().unwrap());
+        index += 2;
+        map.artist = String::from_utf8(flm_data[index..index+artist_size as usize].to_vec()).unwrap();
+        index += artist_size as usize;
 
-        println!("Map metadata: {}", meta);
+        let song_name_size = u16::from_be_bytes((&flm_data[index..index+2]).try_into().unwrap());
+        index += 2;
+        map.song_name = String::from_utf8(flm_data[index..index+song_name_size as usize].to_vec()).unwrap();
+        index += song_name_size as usize;
+
+        let mapper_size = u16::from_be_bytes((&flm_data[index..index+2]).try_into().unwrap());
+        index += 2;
+        map.mapper = String::from_utf8(flm_data[index..index+mapper_size as usize].to_vec()).unwrap();
+        index += mapper_size as usize;
+
+        let map_data_size = u32::from_be_bytes((&flm_data[index..index+4]).try_into().unwrap());
+        index += 4;
+        map.map_data = String::from_utf8(flm_data[index..index+map_data_size as usize].to_vec()).unwrap();
+        index += map_data_size as usize;
+
+        map.mp3_data = flm_data[index..].to_vec();
+
+        println!("Map metadata: {},{},{}", map.artist, map.song_name, map.mapper);
         map
         
     }

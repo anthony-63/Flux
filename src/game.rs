@@ -23,6 +23,7 @@ impl FluxGame {
     pub fn play_map_audio(&self) {
         let (_stream, handle) = rodio::OutputStream::try_default().unwrap();
         let sink = rodio::Sink::try_new(&handle).unwrap();
+        sink.set_volume(0.05);
         let cursor = Cursor::new(self.map.mp3_data.clone());
         sink.append(rodio::decoder::Decoder::new_mp3(cursor).unwrap());
 
