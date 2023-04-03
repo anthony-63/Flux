@@ -1,7 +1,7 @@
 mod maploader;
 mod game;
 
-use game::FluxGame;
+use game::{FluxGame, FluxConfig};
 use maploader::FluxMaploader;
 use nannou::prelude::*;
 
@@ -18,6 +18,12 @@ enum FluxState {
     PlayMap,
 }
 
+pub const SETTINGS: FluxConfig = FluxConfig {
+    ar: 17.0,
+    sd: 10.0,
+    offset: -50,
+};
+
 pub struct Model {
     _window: window::Id,
     game: FluxGame,
@@ -25,10 +31,10 @@ pub struct Model {
 }
 
 fn model(app: &App) -> Model {
-    let _window = app.new_window().dropped_file(dropped_file).view(view).title(TITLE).size(WIDTH, HEIGHT).build().unwrap();
+    let _window = app.new_window().resizable(false).dropped_file(dropped_file).view(view).title(TITLE).size(WIDTH, HEIGHT).build().unwrap();
     Model {
         _window,
-        game: FluxGame::new(),
+        game: FluxGame::new(SETTINGS),
         state: FluxState::WaitForMap,
     }
 }
@@ -38,12 +44,19 @@ fn dropped_file(_app: &App, model: &mut Model, path: std::path::PathBuf) {
         return;
     }
     let map = FluxMaploader::load_map(path.into_os_string().into_string().unwrap());
-    model.game.insert_map(map);
     model.state = FluxState::PlayMap;
+    model.game.insert_map(map);
     model.game.play_map_audio();
 }
 
-fn update(_app: &App, _model: &mut Model, _update: Update) {}
+fn update(_app: &App, model: &mut Model, update: Update) {
+    if model.state != FluxState::PlayMap {
+        return;
+    }
+    model.game.update_curernt_ms();
+    model.game.update_note_index();
+    model.game.update_notes(update.since_last.as_nanos());
+}
 
 fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();

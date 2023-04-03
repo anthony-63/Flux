@@ -1,5 +1,3 @@
-pub const SUPER_SPECIAL_SEP: &str = "⁜";
-
 pub struct FluxMap {
     pub artist: String,
     pub song_name: String,

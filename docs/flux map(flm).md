@@ -1,17 +1,25 @@
 # Flux Map (.flm) file spec
 
+```c
 struct sized_data {
-    u16 size,
-    [u8;size] data
-}
+    uint16_t size,
+    uint8_t data[size]
+};
+```
+
+```c
 struct sized_data_large {
-    u32 size,
-    [u8;size] data
-}
+    uint32_t size,
+    uint8_t data[size]
+};
+```
+
+```c
 struct map {
-    sized_data artist
-    sized_data song_name
-    sized_data mapper
-    sized_data_large map_data
-    [u8] mp3_data
-}
+    struct sized_data artist
+    struct sized_data song_name
+    struct sized_data mapper
+    struct sized_data_large map_data
+    uint8_t mp3_data[];
+};
+```
