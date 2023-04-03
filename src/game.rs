@@ -1,8 +1,8 @@
-use std::{io::Cursor, thread, sync::mpsc::{self, Sender}, time::UNIX_EPOCH};
+use std::{io::Cursor, thread, sync::mpsc::{self, Sender}, time::UNIX_EPOCH, path::PathBuf};
 
 use nannou::prelude::*;
 
-use crate::{maploader::FluxMap, WIDTH, HEIGHT};
+use crate::{maploader::FluxMap, WIDTH, HEIGHT, cursor::FluxCursor, CURSOR_PATH};
 
 
 pub const PLAY_AREA_SIZE_DIVIDER: f32 = 2.5;
@@ -14,12 +14,14 @@ pub struct FluxNote {
     x: f32,
     y: f32,
     z: f32,
-    ms: u32,
+    ms: u64,
 }
 
+#[derive(Clone)]
 pub struct FluxConfig {
     pub ar: f32, // approach rate
-    pub sd: f32, // spawn distance
+    pub ad: f32, // approach distance
+    pub cursor_size: f32, // cursor size
     pub fs: u32, // fade steps TODO: Implement fade
     pub offset: i64,
 }
@@ -28,15 +30,17 @@ pub struct FluxGame {
     map: FluxMap,
     config: FluxConfig,
     audio_sender: Sender<Vec<u8>>,
-    currentms: i64,
-    startms: i64,
+    currentms: u64,
+    startms: u64,
+    approach_time: f64,
     notes: Vec<FluxNote>,
     note_index: usize,
     current_notes: Vec<FluxNote>,
+    pub cursor: FluxCursor,
 }
 
 impl FluxGame {
-    pub fn new(config: FluxConfig) -> Self {
+    pub fn new(app: &App, config: FluxConfig) -> Self {
         let (s, r) = mpsc::channel();
 
         thread::spawn(move || {
@@ -58,23 +62,26 @@ impl FluxGame {
             startms: 0,
             notes: vec![],
             note_index: 0,
-            config,
+            config: config.clone(),
+            approach_time: config.ad as f64 / config.ar as f64,
             current_notes: vec![],
+            cursor: FluxCursor::new(app, config.cursor_size,PathBuf::from(CURSOR_PATH)),
         }
     }
 
     pub fn draw_before_loaded_map(&self, draw: Draw) {
         draw.background().color(BLACK);
         draw.text("Drag and drop map to play").color(WHITE).font_size(30).width(WIDTH as f32);
-
+        self.cursor.draw(draw);
     }
 
     pub fn update_notes(&mut self, dt: u128) {
         let n = dt as f32 / 1000000000.0;
         let mut remove: i32 = -1;
         for (i, mut note) in self.current_notes.iter_mut().enumerate() {
-            note.z -= self.config.ar as f32 * n;
-            
+            let st: f64 = note.ms as f64 - self.approach_time;
+            let t: f64 = (note.ms as i64 - self.currentms as i64) as f64 / (note.ms as f64 - st) / 1000.0;
+            note.z = t as f32 * self.config.ad;
             if note.z <= 1.0 {
                 remove = i as i32;
             }
@@ -82,7 +89,6 @@ impl FluxGame {
         if remove != -1 {
             self.current_notes.remove(remove as usize);
         }
-            
     }
 
     pub fn insert_map(&mut self, map: FluxMap) {
@@ -93,22 +99,25 @@ impl FluxGame {
             }
             let v1 = v.replace("\r", "").replace("\n", "");
             let note_data: Vec<&str> = v1.split("|").collect();
-            self.notes.push(FluxNote{
+            let note = FluxNote{
                 x: note_data[0].parse::<f32>().expect("Failed to parse note x"), 
                 y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 
-                z: self.config.sd,
-                ms: note_data[2].parse::<u32>().expect("Failed to parse note ms: {}")
-            });
+                z: self.config.ad,
+                ms: note_data[2].parse::<u64>().expect("Failed to parse note ms: {}"),
+            };
+
+            self.notes.push(note);
+            // var time = (note.time-current_time)/(note.time-spawn_time)
         }
     }
 
     pub fn play_map_audio(&mut self) {
         self.audio_sender.send(self.map.mp3_data.clone()).unwrap();
-        self.startms = std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64 + self.config.offset;
+        self.startms = (std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64 + self.config.offset) as u64;
     }
 
     pub fn update_curernt_ms(&mut self) {
-        let current_time = std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64;
+        let current_time = std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as u64;
         let b4 = self.currentms;
         self.currentms = current_time - self.startms;
         if b4 == self.currentms {
@@ -118,7 +127,7 @@ impl FluxGame {
     }
 
     pub fn update_note_index(&mut self) {
-        if self.currentms > self.notes[self.note_index].ms as i64 - (self.config.sd * 10.0) as i64 {
+        if self.currentms as i64 >= self.notes[self.note_index].ms as i64 - (self.config.ad * 10.0) as i64 {
             if self.note_index + 1 >= self.notes.len() {
                 return;
             }
@@ -144,8 +153,16 @@ impl FluxGame {
                 .stroke(CYAN)
                 .stroke_weight(2.0 / (note.z / 7.0))
                 .no_fill();
-            draw.text(&format!("Note index: {}, Currentms: {}, Note ms: {}, x: {}, y: {}, z: {:.1}", self.note_index, self.currentms, note.ms, note.x, note.y, note.z)).color(WHITE).x(-450.0).y(-(HEIGHT as f32 / 2.5) + (10.0 * i as f32)).width(WIDTH as f32);
+            let st: f64 = note.ms as f64 - self.approach_time;
+            let t: f64 = (note.ms as i64 - self.currentms as i64) as f64 / (note.ms as f64 - st);
+            draw.text(
+                &format!("i: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, t: {t:.2}", self.note_index, self.currentms, note.ms, note.x, note.y, note.z))
+                .color(WHITE)
+                .x(10.0)
+                .y(-(HEIGHT as f32 / 2.5) + (10.0 * i as f32))
+                .width(WIDTH as f32)
+                .left_justify();
         }
-
+        self.cursor.draw(draw);
     }
 }

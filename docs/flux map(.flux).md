@@ -1,4 +1,4 @@
-# Flux Map (.flm) file spec
+# Flux Map (.flux) file spec
 
 ```c
 struct sized_data {
