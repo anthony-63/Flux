@@ -1,4 +1,4 @@
-use std::{io::Cursor, thread, sync::mpsc::{self, Sender}, time::UNIX_EPOCH, process::exit};
+use std::{io::Cursor, thread, sync::mpsc::{self, Sender}, time::UNIX_EPOCH};
 
 use nannou::prelude::*;
 
@@ -18,8 +18,9 @@ pub struct FluxNote {
 }
 
 pub struct FluxConfig {
-    pub ar: f32,
-    pub sd: f32,
+    pub ar: f32, // approach rate
+    pub sd: f32, // spawn distance
+    pub fs: u32, // fade steps TODO: Implement fade
     pub offset: i64,
 }
 
@@ -96,7 +97,7 @@ impl FluxGame {
                 x: note_data[0].parse::<f32>().expect("Failed to parse note x"), 
                 y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 
                 z: self.config.sd,
-                ms: note_data[2].parse::<u32>().expect(&format!("Failed to parse note ms: {}", note_data[2]))
+                ms: note_data[2].parse::<u32>().expect("Failed to parse note ms: {}")
             });
         }
     }
@@ -118,10 +119,11 @@ impl FluxGame {
 
     pub fn update_note_index(&mut self) {
         if self.currentms > self.notes[self.note_index].ms as i64 - (self.config.sd * 10.0) as i64 {
-            self.current_notes.push(self.notes[self.note_index].clone());
             if self.note_index + 1 >= self.notes.len() {
                 return;
             }
+            self.current_notes.push(self.notes[self.note_index].clone());
+            
             self.note_index += 1;
             return;
         }
@@ -137,10 +139,10 @@ impl FluxGame {
             draw.rect()
                 .width((PLAY_AREA_WIDTH/3.1) / note.z)
                 .height((PLAY_AREA_HEIGHT/3.1) / note.z)
-                .x((note.x - 1.0) * ((PLAY_AREA_WIDTH/3.0) / (note.z)))
+                .x((-note.x + 1.0) * ((PLAY_AREA_WIDTH/3.0) / (note.z)))
                 .y((note.y - 1.0) * ((PLAY_AREA_HEIGHT/3.0) / (note.z)))
                 .stroke(CYAN)
-                .stroke_weight(1.0 / (note.z / 7.0))
+                .stroke_weight(2.0 / (note.z / 7.0))
                 .no_fill();
             draw.text(&format!("Note index: {}, Currentms: {}, Note ms: {}, x: {}, y: {}, z: {:.1}", self.note_index, self.currentms, note.ms, note.x, note.y, note.z)).color(WHITE).x(-450.0).y(-(HEIGHT as f32 / 2.5) + (10.0 * i as f32)).width(WIDTH as f32);
         }

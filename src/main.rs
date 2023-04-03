@@ -19,9 +19,10 @@ enum FluxState {
 }
 
 pub const SETTINGS: FluxConfig = FluxConfig {
-    ar: 17.0,
-    sd: 10.0,
-    offset: -50,
+    ar: 7.5,
+    sd: 6.3,
+    fs: 10,
+    offset: -300, // default should be -300
 };
 
 pub struct Model {
