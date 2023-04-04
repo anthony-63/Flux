@@ -27,7 +27,7 @@ impl FluxCursor {
         self.y = mp.y;
     }
 
-    pub fn lock_cursor_to_play_area(&mut self, play_area: Point2) {
+    pub fn lock_cursor_to_play_area(&mut self) {
         self.x = self.x.clamp(-(PLAY_AREA_WIDTH/2.0), PLAY_AREA_WIDTH/2.0);
         self.y = self.y.clamp(-(PLAY_AREA_HEIGHT/2.0), PLAY_AREA_HEIGHT/2.0);
     }

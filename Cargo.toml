@@ -13,8 +13,8 @@ opt-level = 3
 
 [dependencies]
 nannou = "*"
-rodio = "*"
-
+nannou_egui = "*"
+kira = "*"
 [workspace]
 members = [
     "map-creator",
