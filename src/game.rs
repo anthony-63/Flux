@@ -17,6 +17,7 @@ pub struct FluxNote {
     z: f32,
     i: u32,
     ti: usize,
+    st: u64,
     ms: u64,
 }
 
@@ -24,6 +25,8 @@ pub struct FluxNote {
 pub struct FluxConfig {
     pub ar: f32, // approach rate
     pub ad: f32, // approach distance
+    pub sens: f32,
+    pub volume: f64,
     pub noteset: &'static str,
     pub cursor_size: f32, // cursor size
     pub fs: u32, // fade steps TODO: Implement fade
@@ -54,18 +57,35 @@ impl FluxGame {
             note_index: 0,
             audio_manager: AudioManager::<CpalBackend>::new(AudioManagerSettings::default()).expect("Failed to create audio manager"),
             config: config.clone(),
-            approach_time: config.ad as f64 / config.ar as f64,
+            approach_time: (config.ad as f64 / config.ar as f64) * 1000.0,
             current_notes: vec![],
             noteset_textures: vec![],
             cursor: FluxCursor::new(app, config.cursor_size,PathBuf::from(CURSOR_PATH)),
         }
     }
 
+    pub fn reset(&mut self) {
+        let config = self.config.clone();
+        self.map = FluxMap::empty();
+        self.currentms = 0;
+        self.startms = 0;
+        self.notes = vec![];
+        self.note_index = 0;
+        self.audio_manager = AudioManager::<CpalBackend>::new(AudioManagerSettings::default()).expect("Failed to create audio manager");
+        self.config = config;
+        self.current_notes = vec![];
+    }
+
+    pub fn reload_settings(&mut self, config: FluxConfig) {
+        self.config = config;
+        self.approach_time = (self.config.ad as f64 / self.config.ar as f64) * 1000.0;
+    }
+
     pub fn update_notes(&mut self) {
         let mut remove: i32 = -1;
         for (i, mut note) in self.current_notes.iter_mut().enumerate() {
             let st: f64 = note.ms as f64 - self.approach_time;
-            let t: f64 = (note.ms as i64 - self.currentms as i64) as f64 / (note.ms as f64 - st) / 1000.0;
+            let t: f64 = (note.ms as i64 - self.currentms as i64) as f64 / (note.ms as f64 - st);
             note.z = t as f32 * self.config.ad;
             if note.z <= 1.0 {
                 remove = i as i32;
@@ -76,8 +96,9 @@ impl FluxGame {
         }
     }
 
-    pub fn load_noteset(&mut self, app: &App) {
-        for e in Path::new(self.config.noteset).read_dir().unwrap() {
+    pub fn load_noteset(&mut self, app: &App, noteset: &str) {
+        self.noteset_textures = vec![];
+        for e in Path::new(noteset).read_dir().unwrap() {
             let path = e.unwrap().path();
             if let Some(ext) = path.extension() {
                 if ext == "png" {
@@ -89,11 +110,16 @@ impl FluxGame {
         }
     }
 
-    pub fn stop_audio(&mut self) {
-        let tween = Tween {
+    pub fn set_volume(&mut self, vol: f64) {
+        self.audio_manager.main_track().set_volume(vol, Tween {
             ..Default::default()
-        };
-        self.audio_manager.pause(tween).unwrap();
+        }).unwrap();
+    }
+
+    pub fn stop_audio(&mut self) {
+        self.audio_manager.pause(Tween {
+            ..Default::default()
+        }).unwrap();
     }
 
     pub fn insert_map(&mut self, map: FluxMap) {
@@ -107,10 +133,11 @@ impl FluxGame {
             let note = FluxNote{
                 x: note_data[0].parse::<f32>().expect("Failed to parse note x"), 
                 y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 
-                z: self.config.ad,
+                z: 300.0,
                 i: i as u32,
+                st: (note_data[2].parse::<u64>().expect("Failed to parse note st") as f64 - self.approach_time as f64) as u64,
                 ti: i % self.noteset_textures.len(),
-                ms: note_data[2].parse::<u64>().expect("Failed to parse note ms: {}"),
+                ms: note_data[2].parse::<u64>().expect("Failed to parse note ms"),
             };
 
             self.notes.push(note);
@@ -136,20 +163,21 @@ impl FluxGame {
     }
 
     pub fn update_note_index(&mut self) {
-        if self.currentms as i64 >= self.notes[self.note_index].ms as i64 - (self.config.ad * 10.0) as i64 {
-            if self.note_index + 1 >= self.notes.len() {
-                return;
-            }
-            self.current_notes.push(self.notes[self.note_index].clone());
-
-            self.note_index += 1;
+        
+        // println!("{} {}", self.currentms, self.notes[self.note_index].st);
+        if self.currentms < self.notes[self.note_index].st {
             return;
         }
+        if self.note_index + 1 >= self.notes.len() {
+            return;
+        }
+        self.current_notes.push(self.notes[self.note_index].clone());
+
+        self.note_index += 1;
+        return;
     }
 
     pub fn draw_before_loaded_map(&self, draw: Draw) {
-        
-        self.cursor.draw(draw);
     }
 
     pub fn draw_play_game(&self, draw: Draw) {
@@ -164,16 +192,15 @@ impl FluxGame {
                 .x((-note.x + 1.0) * ((PLAY_AREA_WIDTH/3.0) / (note.z)))
                 .y((note.y - 1.0) * ((PLAY_AREA_HEIGHT/3.0) / (note.z)));
 
-            let st: f64 = note.ms as f64 - self.approach_time;
-            let t: f64 = (note.ms as i64 - self.currentms as i64) as f64 / (note.ms as f64 - st);
             draw.text(
-                &format!("i: {}, a: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, t: {t:.2}", self.note_index, note.i, self.currentms, note.ms, note.x, note.y, note.z))
+                &format!("i: {}, a: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, st: {:.2}", self.note_index, note.i, self.currentms, note.ms, note.x, note.y, note.z, note.st))
                 .color(WHITE)
                 .x(10.0)
                 .y(-(HEIGHT as f32 / 2.5) + (10.0 * i as f32))
                 .width(WIDTH as f32)
                 .left_justify();
         }
-        self.cursor.draw(draw);
+        self.cursor.draw(draw.clone());
+
     }
 }

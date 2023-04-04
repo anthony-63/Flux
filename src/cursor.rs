@@ -22,9 +22,9 @@ impl FluxCursor {
     pub fn draw(&self, draw: Draw) {
         draw.texture(&self.texture).x_y(self.x, self.y).w_h(self.size, self.size);
     }
-    pub fn cursor_move(&mut self, mp: Point2) {
-        self.x = mp.x;
-        self.y = mp.y;
+    pub fn cursor_move(&mut self, mp: Point2, sens: f32) {
+        self.x = mp.x * sens;
+        self.y = mp.y * sens;
     }
 
     pub fn lock_cursor_to_play_area(&mut self) {
