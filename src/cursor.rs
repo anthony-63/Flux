@@ -26,6 +26,9 @@ impl FluxCursor {
         self.x = mp.x * sens;
         self.y = mp.y * sens;
     }
+    pub fn change_cursor_size(&mut self, size: f32) {
+        self.size = size;
+    }
 
     pub fn lock_cursor_to_play_area(&mut self) {
         self.x = self.x.clamp(-(PLAY_AREA_WIDTH/2.0), PLAY_AREA_WIDTH/2.0);

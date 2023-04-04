@@ -5,7 +5,7 @@ mod cursor;
 use game::{FluxGame, FluxConfig};
 use maploader::FluxMaploader;
 use nannou::prelude::*;
-use nannou_egui::{Egui, egui::{self, Button, DragValue}};
+use nannou_egui::{Egui, egui::{self, Button, DragValue, FontDefinitions}};
 
 const TITLE: &'static str = "Flux | ALPHA v0.1";
 pub const WIDTH: u32 = 1280;
@@ -151,10 +151,16 @@ fn update(app: &App, model: &mut Model, update: Update) {
         model.state = FluxState::MapMenu
     }
     if model.state == FluxState::MapMenu {
+        let mut fonts = FontDefinitions::default();
+        fonts.family_and_size.insert(egui::TextStyle::Body, (egui::FontFamily::Proportional, 22.0));
+        fonts.family_and_size.insert(egui::TextStyle::Button, (egui::FontFamily::Proportional, 22.0));
+        fonts.family_and_size.insert(egui::TextStyle::Monospace, (egui::FontFamily::Proportional, 22.0));
+        fonts.family_and_size.insert(egui::TextStyle::Small, (egui::FontFamily::Proportional, 22.0));
+
         let gui = &mut model.menu_gui;
         gui.set_elapsed_time(update.since_start);
         let ctx = gui.begin_frame();
-
+        ctx.set_fonts(fonts);
         egui::Window::new("Map list")
             .fixed_pos(egui::Pos2::new(0.0, 0.0))
             .default_size(egui::Vec2::new(WIDTH as f32, HEIGHT as f32))
@@ -181,35 +187,45 @@ fn update(app: &App, model: &mut Model, update: Update) {
 
         if model.show_settings {
             egui::Window::new("Settings").resizable(false).show(&ctx, |ui| {
-                ui.label("AR: ");
-                if ui.add(DragValue::new(&mut model.settings.ar).speed(0.1).clamp_range(0.0..=500.0)).changed() {
-                    model.game.reload_settings(model.settings.clone());
-                }
-                ui.end_row();
-                ui.label("AD: ");
-                if ui.add(DragValue::new(&mut model.settings.ad).speed(0.1).clamp_range(0.0..=500.0)).changed() {
-                    model.game.reload_settings(model.settings.clone());
-                }
-                ui.end_row();
-                ui.label("Volume: ");
-                if ui.add(DragValue::new(&mut model.settings.volume).clamp_range(0.0..=10.0).speed(0.01)).changed() {
-                    model.game.set_volume(model.settings.volume);
-                }
-                ui.end_row();
-                ui.label("SENS: ");
-                ui.add(DragValue::new(&mut model.settings.sens).speed(0.1));
-                ui.end_row();
-                ui.label("noteset: ");
-                egui::ComboBox::from_label("")
-                    .selected_text(format!("{:?}", model.selected_noteset))
-                    .show_ui(ui, |ui| {
-                        for  v in model.notesets.clone().into_iter() {
-                            ui.selectable_value(&mut model.selected_noteset, v.clone(), v);
-                        }
-                    });
-                if ui.button("Load selected noteset").clicked() {
-                    model.game.load_noteset(app, &model.selected_noteset);
-                }
+                ui.horizontal(|ui| {
+                    ui.label("AR: ");
+                    if ui.add(DragValue::new(&mut model.settings.ar).speed(0.1).clamp_range(0.0..=500.0)).changed() {
+                        model.game.reload_settings(model.settings.clone());
+                    }
+                }); 
+
+                ui.horizontal(|ui| {
+                    ui.label("AD: ");
+                    if ui.add(DragValue::new(&mut model.settings.ad).speed(0.1).clamp_range(0.0..=500.0)).changed() {
+                        model.game.reload_settings(model.settings.clone());
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Volume: ");
+                    if ui.add(DragValue::new(&mut model.settings.volume).clamp_range(0.0..=10.0).speed(0.01)).changed() {
+                        model.game.set_volume(model.settings.volume);
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Sensitivity: ");
+                    ui.add(DragValue::new(&mut model.settings.sens).speed(0.1));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Noteset: ");
+                    egui::ComboBox::from_label("")
+                        .selected_text(format!("{:?}", model.selected_noteset))
+                        .show_ui(ui, |ui| {
+                            for  v in model.notesets.clone().into_iter() {
+                                ui.selectable_value(&mut model.selected_noteset, v.clone(), v);
+                            }
+                        });
+                    if ui.button("Load selected noteset").clicked() {
+                        model.game.load_noteset(app, &model.selected_noteset);
+                    }
+                });
             });
         }
 
