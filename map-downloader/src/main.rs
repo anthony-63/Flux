@@ -53,7 +53,7 @@ async fn main() {
 }
 async fn save(id: String, path_to: PathBuf, client: Client, sema: &Semaphore) {
     if let Ok(map_bytes) =
-        timeout(Duration::from_secs(60), download(id.clone(), client, sema)).await
+        download(id.clone(), client, sema).await
     {
         if let Err(e) = map_bytes {
             println!("failed to download {:?} {:?}", id, e);
@@ -77,14 +77,14 @@ async fn save(id: String, path_to: PathBuf, client: Client, sema: &Semaphore) {
         println!("{:?} took too long to download..", id)
     }
 }
-async fn download(id: String, client: Client, sema: &Semaphore) -> reqwest::Result<bytes::Bytes> {
+async fn download(id: String, client: Client, sema: &Semaphore) -> Result<reqwest::Result<bytes::Bytes>,()> {
     let _a = sema.acquire().await;
     let url = format!("{DB}/maps/{id}.sspm");
-    let d = client.get(url).send().await?;
-    let d= d.bytes().await;
+    timeout(Duration::from_secs(60), async {
 
-
-    
-    // fake error
-    d
+        let d = client.get(url).send().await?;
+        let d= d.bytes().await;
+        // fake error
+        d
+    }).await.map_err(|_| ())
 }
