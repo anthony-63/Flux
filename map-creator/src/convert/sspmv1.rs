@@ -1,25 +1,26 @@
 use std::io::{BufReader, Cursor, BufRead, Read, Seek, SeekFrom};
 
 use binrw::BinReaderExt;
+use thiserror::Error;
 
 use crate::FluxMap;
 
 pub struct SSPM1 {
-    music_data : Vec<u8>,
-    map_data : Vec<SSPM1Note>,
-    id : String,
-    name : String,
-    creator : String,
+    pub music_data : Vec<u8>,
+    pub map_data : Vec<SSPM1Note>,
+    pub id : String,
+    pub name : String,
+    pub creator : String,
 }
 pub struct SSPM1NoteF {
-    time : u32,
-    x : f32,
-    y : f32,
+    pub time : u32,
+    pub x : f32,
+    pub y : f32,
 }
 pub struct SSPM1Note8 {
-    time : u32,
-    x : f32,
-    y : f32,
+    pub time : u32,
+    pub x : u8,
+    pub y : u8,
 }
 pub enum SSPM1Note {
     Float(SSPM1NoteF),
@@ -33,51 +34,73 @@ impl SSPM1Note {
         }
     }
 }
+#[derive(Debug,Error)]
+pub enum MapParseErrorV1 {
+    #[error("bad format pos: {0}")]
+    BadFormat(u64),
+    #[error("map has no audio")]
+    NoAudio
+}
 
 impl TryFrom<Vec<u8>> for SSPM1 {
-    type Error = ();
+    type Error = MapParseErrorV1;
     fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
+        SSPM1::try_from(Cursor::new(data.as_slice()))
+    }
+}
+impl TryFrom<Cursor<&[u8]>> for SSPM1 {
+    type Error = MapParseErrorV1;
+    fn try_from(mut data: Cursor<&[u8]>) -> Result<Self, Self::Error> {
         let mut mid = String::new();
         let mut mname = String::new();
         let mut mcreator = String::new();
-        let data = {
-            let mut vd = vec![];
-            let mut r =BufReader::new(Cursor::new(data));
-            r.read_line(&mut mid);
-            r.read_line(&mut mname);
-            r.read_line(&mut mcreator);
+        let offset = {
+            
+            let mut r =BufReader::new(&mut data);
+            r.read_line(&mut mid).or(Err(MapParseErrorV1::BadFormat(r.stream_position().unwrap())))?;
+            r.read_line(&mut mname).or(Err(MapParseErrorV1::BadFormat(r.stream_position().unwrap())))?;
+            r.read_line(&mut mcreator).or(Err(MapParseErrorV1::BadFormat(r.stream_position().unwrap())))?;
         
-            r.read_to_end(&mut vd);
-            vd
+            let pos = r.stream_position().or(Err(MapParseErrorV1::BadFormat(r.stream_position().unwrap())))?;
+            pos
     
         };
-        let mut r = Cursor::new(data);
-        let last_ms : u32 = r.read_le().or(Err(()))?;
-        let note_count : u32 = r.read_le().or(Err(()))?;
-        let mut diff :u8 = r.read_le().or(Err(()))?;
-        let mut img_type : u8 = r.read_le().or(Err(()))?;
+        let mut r = data;
+        r.set_position(offset);
+        let _last_ms : u32 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+        let note_count : u32 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+        let _diff :u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+        let img_type : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
         match img_type {
             2 => {
-                let mut len : u64 = r.read_le().or(Err(()))?;
-                r.seek(SeekFrom::Current(len as i64)).or(Err(()))?;
+                let len : u64 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                r.seek(SeekFrom::Current(len as i64)).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+            }
+            1 => {
+                let _height : u16 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                let _width : u16 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                let _mipmaps : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                let _format : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                let len : u64 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                r.seek(SeekFrom::Current(len as i64)).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
             }
             _ => {}
         }
-        let has_audio :u8 = r.read_le().or(Err(()))?;
+        let has_audio :u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
         if has_audio != 1 {
-            return Err(()); // no audio
+            return Err(MapParseErrorV1::NoAudio); // no audio
         }
-        let music_length : u64 = r.read_le().or(Err(()))?;
+        let music_length : u64 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
         let mut music_d = vec![0;music_length as usize];
-        r.read_exact(&mut music_d).or(Err(()))?;
+        r.read_exact(&mut music_d).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
         let mut notes : Vec<SSPM1Note> = Vec::with_capacity(note_count as usize);
-        for i in 0..note_count {
-            let time : u32 = r.read_le().or(Err(()))?;
-            let ntype : u8 = r.read_le().or(Err(()))?;
+        for _ in 0..note_count {
+            let time : u32 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+            let ntype : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
             notes.push(match ntype {
                 1 => {
-                    let x : f32 = r.read_le().or(Err(()))?;
-                    let y : f32 = r.read_le().or(Err(()))?;
+                    let x : f32 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                    let y : f32 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
                     SSPM1Note::Float(SSPM1NoteF {
                         time,
                         x,
@@ -85,12 +108,12 @@ impl TryFrom<Vec<u8>> for SSPM1 {
                     })
                 }
                 _=> {
-                    let x : u8 = r.read_le().or(Err(()))?;
-                    let y : u8 = r.read_le().or(Err(()))?;
+                    let x : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                    let y : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
                     SSPM1Note::Int(SSPM1Note8 {
                         time,
-                        x : x as f32,
-                        y : y as f32,
+                        x : x,
+                        y : y,
                     })
                 }
             });
@@ -107,6 +130,7 @@ impl TryFrom<Vec<u8>> for SSPM1 {
         })
     }
 }
+
 impl Into<FluxMap> for SSPM1 {
     fn into(self) -> FluxMap {
         let mut normalise_notes = String::new();

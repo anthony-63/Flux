@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use futures::{future::join_all, stream::FuturesUnordered, StreamExt};
-use map_creator::{FluxMap, convert::sspmv1::SSPM1};
+use futures::{future::join_all};
+use map_creator::{FluxMap, convert::{sspm::SSPM}};
 use mapdata::{DbRoot, MapRoot};
 use reqwest::Client;
 use tokio::sync::Semaphore;
@@ -28,7 +28,6 @@ async fn main() {
             continue;
         }
         let map_data : MapRoot = serde_json::from_value(map_data.clone()).expect("unable to parse data");
-        println!("map id : {}",map_data.id);
         downloads.push(save(map_data,download_file_to, client.clone(), &sema))
         
     }
@@ -40,24 +39,23 @@ async fn save(map_data:MapRoot,path_to:PathBuf, client:Client, sema : &Semaphore
         // sspmw.set_extension("sspm");
         // std::fs::write(sspmw, &map_datad).expect("aa");
 
-        let map_datan = SSPM1::try_from(map_datad);
-        if let Ok(d) = map_datan {
-            println!("got map data, converting..");
-            // return;
-            
-            FluxMap::from(d.into()).save(path_to.clone());
-            println!("saved {:?}",&path_to)
-        } else {
-            println!("unable to parse map data for {}",map_data.id);
-        }
+        let map_datan = SSPM::try_from(map_datad);
+        match map_datan {
+
+            Ok(d) => {
+                FluxMap::from(d.into()).save(path_to.clone());
+                println!("saved {:?}",&path_to)
+            }     
+            Err(e) => {
+                println!("failed to parse {:?} {:?}",&path_to,e)
+            }
+        } 
 
     }
 }
 async fn download(id:String, client:Client, sema : &Semaphore) -> Result<Vec<u8>,()> {
-    let sem = sema.acquire().await;
-    println!("downloading {id}");
-    let map_file = format!("{DB}/maps/{id}.sspm");
-    let map_data = client.get(map_file).send().await.unwrap().bytes().await.unwrap().to_vec();
-    println!("done {id}");
+    let _ = sema.acquire().await;
+    let url = format!("{DB}/maps/{id}.sspm");
+    let map_data = client.get(url).send().await.unwrap().bytes().await.unwrap().to_vec();
     Ok(map_data)
 }

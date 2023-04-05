@@ -1,43 +1,82 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand, Args};
+use map_creator::{FluxMap, convert::sspmv1::SSPM1};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct CliArguments {
-    #[arg(short,long)]
-    artist : String,
-    #[arg(short,long)]
-    song_name : String,
-    #[arg(short,long)]
-    mapper : String,
-    #[arg(short='k',long)]
-    map_path : PathBuf,
-    #[arg(short='j',long)]
-    audio_path : PathBuf,
+    /// where to save the map file - if bulk then it is treated as a folder
     #[arg(short,long)]
     out_path : PathBuf,
+    #[command(subcommand)]
+    command: Commands
 }
-
+#[derive(Subcommand)]
+enum Commands {
+    /// create multiple maps from another format in a folder.
+    Bulk(BulkConvert),
+    /// create a map with provided data
+    Single(SingleConvert)
+}
+#[derive(Args)]
+struct SingleConvert {
+    /// name of the artist
+    #[arg(short,long)]
+    artist : String,
+    /// name of the song
+    #[arg(short,long)]
+    song_name : String,
+    /// name of the mapper
+    #[arg(short,long)]
+    mapper : String,
+    /// path to the map (SS only) file
+    #[arg(short='k',long)]
+    map_path : PathBuf,
+    /// path to the audio file
+    #[arg(short='j',long)]
+    audio_path : PathBuf,
+}
+#[derive(Args)]
+struct BulkConvert {
+    /// folder to read from
+    #[arg(short,long)]
+    in_path : PathBuf,
+}
 fn main() {
-    let args : CliArguments = CliArguments::parse();
-    if !args.map_path.exists() {
-        panic!("Map file does not exist!");
+    let gargs : CliArguments = CliArguments::parse();
+
+    match gargs.command {
+        Commands::Single(args) => {
+            if !args.map_path.exists() {
+                panic!("Map file does not exist!");
+            }
+            if !args.audio_path.exists() {
+                panic!("audio file does not exist!");
+            }
+            let map_data = std::fs::read(&args.map_path).expect("Failed to read map file. SHOULD NOT HAPPEN???");
+            let audio_data = std::fs::read(&args.audio_path).expect("Failed to read audio file. SHOULD NOT HAPPEN???");
+            FluxMap {
+                artist:args.artist,
+                song_name:args.song_name,
+                mapper:args.mapper,
+                map_data,
+                music_data:audio_data
+            }.save(gargs.out_path);
+
+        }
+        Commands::Bulk(args) => {
+            for files in std::fs::read_dir(args.in_path).expect("unable to read in_path") {
+                if let Ok(entry) = files {
+                    let fname = entry.file_name();
+                    let fname = fname.to_string_lossy();
+                    if fname.ends_with(".sspm") {
+                        let fdata = std::fs::read(entry.path()).expect("unable to read file");
+                        let flux:FluxMap = SSPM1::try_from(fdata).expect("unable to parse data").into();
+                        flux.save(gargs.out_path.join(fname.replace(".sspm",".flux")));
+                    }
+                }
+            }
+        }
     }
-    if !args.audio_path.exists() {
-        panic!("audio file does not exist!");
-    }
-    let map_data = std::fs::read(&args.map_path).expect("Failed to read map file. SHOULD NOT HAPPEN???");
-    let audio_data = std::fs::read(&args.audio_path).expect("Failed to read audio file. SHOULD NOT HAPPEN???");
-    let mut flm_data = Vec::<u8>::with_capacity(audio_data.len() + map_data.len() + args.artist.len() + args.song_name.len() + args.mapper.len() + 48); //48 is just to be safe (doesn't increase file size)
-    flm_data.extend((args.artist.len() as u16).to_be_bytes());
-    flm_data.extend(args.artist.as_bytes());
-    flm_data.extend((args.song_name.len() as u16).to_be_bytes());
-    flm_data.extend(args.song_name.as_bytes());
-    flm_data.extend((args.mapper.len() as u16).to_be_bytes());
-    flm_data.extend(args.mapper.as_bytes());
-    flm_data.extend((map_data.len() as u32).to_be_bytes());
-    flm_data.extend(map_data);
-    flm_data.extend(audio_data);
-    std::fs::write(&args.out_path, flm_data).expect("Failed to write flm file. SHOULD NOT HAPPEN???");
 }

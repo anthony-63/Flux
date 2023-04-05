@@ -1,5 +1,7 @@
 pub mod convert;
-use std::path::PathBuf;
+use std::{path::PathBuf, io::Cursor};
+
+use binrw::BinWriterExt;
 pub struct FluxMap {
     pub artist:String,
     pub song_name:String,
@@ -10,15 +12,16 @@ pub struct FluxMap {
 impl FluxMap {
     pub fn save(self,path_to: PathBuf) {
         let mut flm_data = Vec::<u8>::with_capacity(self.music_data.len() + self.map_data.len() + self.artist.len() + self.song_name.len() + self.mapper.len() + 48); //48 is just to be safe (doesn't increase file size)
-        flm_data.extend((self.artist.len() as u16).to_be_bytes());
-        flm_data.extend(self.artist.as_bytes());
-        flm_data.extend((self.song_name.len() as u16).to_be_bytes());
-        flm_data.extend(self.song_name.as_bytes());
-        flm_data.extend((self.mapper.len() as u16).to_be_bytes());
-        flm_data.extend(self.mapper.as_bytes());
-        flm_data.extend((self.map_data.len() as u32).to_be_bytes());
-        flm_data.extend(self.map_data);
-        flm_data.extend(self.music_data);
+        let mut w = Cursor::new(&mut flm_data);
+        w.write_be(&(self.artist.len() as u16)).unwrap();
+        w.write_be(&self.artist.as_bytes()).unwrap();
+        w.write_be(&(self.song_name.len() as u16)).unwrap();
+        w.write_be(&self.song_name.as_bytes()).unwrap();
+        w.write_be(&(self.mapper.len() as u16)).unwrap();
+        w.write_be(&self.mapper.as_bytes()).unwrap();
+        w.write_be(&(self.map_data.len() as u32)).unwrap();
+        w.write_be(&self.map_data).unwrap();
+        w.write_be(&self.music_data).unwrap();
         std::fs::write(&path_to, flm_data).expect("Failed to write flm file. SHOULD NOT HAPPEN???");
     
     }
