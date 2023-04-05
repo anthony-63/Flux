@@ -235,7 +235,6 @@ impl FluxGame {
             }
             let v1 = v.replace("\r", "").replace("\n", "");
             let note_data: Vec<&str> = v1.split("|").collect();
-            println!("{}", self.noteset_textures.len());
             let note = FluxNote{
                 x: note_data[0].parse::<f32>().expect("Failed to parse note x"), 
                 y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 

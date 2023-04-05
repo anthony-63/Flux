@@ -2,6 +2,8 @@ mod maploader;
 mod game;
 mod cursor;
 
+use std::path::Path;
+
 use game::{FluxGame, FluxConfig};
 use log::LevelFilter;
 use log4rs::{append::file::FileAppender, encode::pattern::PatternEncoder, Config, config::{Appender, Root}};
@@ -18,12 +20,13 @@ pub const LOG_FILE: &'static str = "data/flux.log.txt";
 fn main() {
     let logfile = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{l} - {m}\n")))
+        .append(false)
         .build(LOG_FILE).unwrap();
     let config = Config::builder()
         .appender(Appender::builder().build("logfile", Box::new(logfile)))
         .build(Root::builder()
         .appender("logfile")
-        .build(LevelFilter::Info)).unwrap();
+        .build(LevelFilter::Warn)).unwrap();
     log4rs::init_config(config).unwrap();
     log_panics::init();
     nannou::app(model).update(update).loop_mode(LoopMode::RefreshSync).run();
@@ -48,7 +51,7 @@ pub const DEFAULT_SETTINGS: FluxConfig = FluxConfig {
     hitbox: 1.14,
     noteset: "rounded",
     cursorset: "default",
-    hitset: "thump_click",
+    hitset: "thump",
 };
 
 pub struct Model {
@@ -266,15 +269,43 @@ fn update(app: &App, model: &mut Model, update: Update) {
 
                 ui.horizontal(|ui| {
                     ui.label("Noteset: ");
-                    egui::ComboBox::from_label("")
-                        .selected_text(format!("{:?}", model.selected_noteset))
+                    egui::ComboBox::from_label(" ")
+                        .selected_text(format!("{:?}", Path::new(&model.selected_noteset).file_name().unwrap().to_str().unwrap().to_string()))
                         .show_ui(ui, |ui| {
                             for  v in model.notesets.clone().into_iter() {
-                                ui.selectable_value(&mut model.selected_noteset, v.clone(), v);
+                                ui.selectable_value(&mut model.selected_noteset, v.clone(), Path::new(&v).into_iter().last().unwrap().to_str().unwrap().to_string());
                             }
                         });
                     if ui.button("Load selected noteset").clicked() {
                         model.game.load_noteset(app, &model.selected_noteset);
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Hitset: ");
+                    egui::ComboBox::from_label("  ")
+                        .selected_text(format!("{:?}", Path::new(&model.selected_hitset).file_name().unwrap().to_str().unwrap().to_string()))
+                        .show_ui(ui, |ui| {
+                            for  v in model.hitsets.clone().into_iter() {
+                                ui.selectable_value(&mut model.selected_hitset, v.clone(), Path::new(&v).into_iter().last().unwrap().to_str().unwrap().to_string());
+                            }
+                        });
+                    if ui.button("Load selected hitset").clicked() {
+                        model.game.load_hitset(&model.selected_hitset);
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Cursorset: ");
+                    egui::ComboBox::from_label("   ")
+                        .selected_text(format!("{:?}", Path::new(&model.selected_cursorset).file_name().unwrap().to_str().unwrap().to_string()))
+                        .show_ui(ui, |ui| {
+                            for  v in model.cursorsets.clone().into_iter() {
+                                ui.selectable_value(&mut model.selected_noteset, v.clone(), Path::new(&v).into_iter().last().unwrap().to_str().unwrap().to_string());
+                            }
+                        });
+                    if ui.button("Load selected cursorset").clicked() {
+                        model.game.load_cursorset(app, &model.selected_cursorset);
                     }
                 });
             });
@@ -289,9 +320,9 @@ fn update(app: &App, model: &mut Model, update: Update) {
             .show(&ctx, |ui| {
 
             ui.horizontal(|ui| {
+                ui.label("Search: ");
                 ui.text_edit_singleline(&mut model.map_search);
             });
-
 
             ui.label("maps:");
             for i in model.maps.clone().into_iter() {
@@ -304,8 +335,8 @@ fn update(app: &App, model: &mut Model, update: Update) {
                 if contains.contains(&false) && !model.map_search.is_empty() {
                     continue;
                 }
-                if ui.add(Button::new(i.clone())).clicked() {
-                    let map = FluxMaploader::load_map(i.clone());
+                if ui.add(Button::new(Path::new(&i.clone()).file_name().unwrap().to_str().unwrap().to_string())).clicked() {
+                    let map = FluxMaploader::load_map(i);
                     model.state = FluxState::PlayMap;
                     model.game.insert_map(map);
                     model.game.play_map_audio();
