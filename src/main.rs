@@ -3,16 +3,29 @@ mod game;
 mod cursor;
 
 use game::{FluxGame, FluxConfig};
+use log::LevelFilter;
+use log4rs::{append::file::FileAppender, encode::pattern::PatternEncoder, Config, config::{Appender, Root}};
 use maploader::FluxMaploader;
 use nannou::prelude::*;
 use nannou_egui::{Egui, egui::{self, Button, DragValue, FontDefinitions}};
 
 const TITLE: &'static str = "Flux | ALPHA v0.1";
-pub const CURSOR_PATH: &'static str = "data/cursor.png";
 pub const MAP_DIR: &'static str = "data/maps";
 pub const NOTESETS_DIR: &'static str = "data/notesets";
-pub const HITSOUND_PATH: &'static str = "data/hit.wav";
+pub const HITSETS_DIR: &'static str = "data/hitsets";
+pub const CURSORSETS_DIR: &'static str = "data/cursorsets";
+pub const LOG_FILE: &'static str = "data/flux.log.txt";
 fn main() {
+    let logfile = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{l} - {m}\n")))
+        .build(LOG_FILE).unwrap();
+    let config = Config::builder()
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .build(Root::builder()
+        .appender("logfile")
+        .build(LevelFilter::Info)).unwrap();
+    log4rs::init_config(config).unwrap();
+    log_panics::init();
     nannou::app(model).update(update).loop_mode(LoopMode::RefreshSync).run();
 }
 
@@ -34,6 +47,8 @@ pub const DEFAULT_SETTINGS: FluxConfig = FluxConfig {
     offset: 0,
     hitbox: 1.14,
     noteset: "rounded",
+    cursorset: "default",
+    hitset: "thump_click",
 };
 
 pub struct Model {
@@ -44,9 +59,13 @@ pub struct Model {
     maps: Vec<String>,
     menu_gui: Egui,
     notesets: Vec<String>,
+    hitsets: Vec<String>,
+    cursorsets: Vec<String>,
     show_settings: bool,
     settings: FluxConfig,
     selected_noteset: String,
+    selected_cursorset: String,
+    selected_hitset: String,
     lmx: Point2,
     map_search: String,
 }
@@ -74,9 +93,13 @@ fn model(app: &App) -> Model {
         maps: vec![],
         map_search: String::from(""),
         notesets: vec![],
+        cursorsets: vec![],
+        hitsets: vec![],
         settings: DEFAULT_SETTINGS,
         show_settings: false,
         selected_noteset: String::from(""),
+        selected_cursorset: String::from(""),
+        selected_hitset: String::from(""),
         lmx: Point2::new(0.0, 0.0),
     }
 }
@@ -156,6 +179,20 @@ fn update(app: &App, model: &mut Model, update: Update) {
                 model.notesets.push(String::from(path.as_os_str().to_str().unwrap()));
             }
         }
+        for file in std::fs::read_dir(CURSORSETS_DIR).unwrap() {
+            let path = file.unwrap().path();
+            if path.is_dir() {
+                model.cursorsets.push(String::from(path.as_os_str().to_str().unwrap()));
+            }
+        }
+
+        for file in std::fs::read_dir(HITSETS_DIR).unwrap() {
+            let path = file.unwrap().path();
+            if path.is_dir() {
+                model.hitsets.push(String::from(path.as_os_str().to_str().unwrap()));
+            }
+        }
+
         println!("All maps: ");
         for i in model.maps.clone().into_iter() {
             println!("{}", i);
@@ -164,8 +201,20 @@ fn update(app: &App, model: &mut Model, update: Update) {
         for i in model.notesets.clone().into_iter() {
             println!("{}", i);
         }
+        println!("All cursorsets: ");
+        for i in model.cursorsets.clone().into_iter() {
+            println!("{}", i);
+        }
+        println!("All hitsets: ");
+        for i in model.hitsets.clone().into_iter() {
+            println!("{}", i);
+        }
         model.selected_noteset = model.notesets[0].clone();
+        model.selected_hitset = model.hitsets[0].clone();
+        model.selected_cursorset = model.cursorsets[0].clone();
         model.game.load_noteset(app, &model.selected_noteset);
+        model.game.load_hitset(&model.selected_hitset);
+        model.game.load_cursorset(app, &model.selected_cursorset);
         model.state = FluxState::MapMenu
     }
     if model.state == FluxState::MapMenu {
@@ -285,7 +334,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
     draw.background().color(BLACK);
     match model.state {
-        FluxState::InitGame => { draw.text("Loading maps").font_size(50).width(app.window_rect().w() as f32); },
+        FluxState::InitGame => { draw.text("Loading content").font_size(50).width(app.window_rect().w() as f32); },
         FluxState::MapMenu => model.game.draw_before_loaded_map(draw.clone()),
         FluxState::PlayMap => model.game.draw_play_game(app, draw.clone()),
     };

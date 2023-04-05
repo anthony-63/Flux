@@ -22,6 +22,10 @@ panic = "abort"
 nannou = "0.18.1"
 nannou_egui = "0.5.0"
 kira = "0.7.3"
+log = "0.4.17"
+env_logger = "0.10.0"
+log-panics = "2.1.0"
+log4rs = "1.2.0"
 [workspace]
 members = [
     "map-creator",

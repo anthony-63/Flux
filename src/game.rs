@@ -1,9 +1,9 @@
-use std::{time::UNIX_EPOCH, path::{PathBuf, Path}, io::Cursor};
+use std::{time::UNIX_EPOCH, path::Path, io::Cursor};
 
 use kira::{manager::{AudioManager, backend::cpal::CpalBackend, AudioManagerSettings}, sound::static_sound::{StaticSoundData, StaticSoundSettings}, tween::Tween};
 use nannou::prelude::*;
 
-use crate::{maploader::FluxMap, cursor::FluxCursor, CURSOR_PATH, HITSOUND_PATH};
+use crate::{maploader::FluxMap, cursor::FluxCursor};
 
 
 pub const PLAY_AREA_SIZE_DIVIDER: f32 = 2.5;
@@ -13,11 +13,13 @@ pub struct FluxNote {
     x: f32,
     y: f32,
     z: f32,
-    i: u32,
-    ti: usize,
-    st: u64,
+    index: u32,
+    noteset_index: usize,
+    hitset_index: usize,
+    cursorset_index: usize,
+    spawn_time: u64,
     ms: u64,
-    hs: bool,
+    hitsound_played: bool,
 }
 
 #[derive(Clone)]
@@ -32,6 +34,8 @@ pub struct FluxConfig {
     pub cursor_size: f32, // cursor size
     pub fs: u32, // fade steps TODO: Implement fade
     pub offset: i64,
+    pub hitset: &'static str,
+    pub cursorset: &'static str,
 }
 
 pub struct FluxGame {
@@ -45,12 +49,15 @@ pub struct FluxGame {
     audio_manager: AudioManager,
     notes: Vec<FluxNote>,
     note_index: usize,
+    hitset_sounds: Vec<StaticSoundData>,
+    hitset_index: usize,
     noteset_textures: Vec<wgpu::Texture>,
     current_notes: Vec<FluxNote>,
     missed: u32,
     hit: u32,
     removed: u32,
     unpaused_start: u64,
+    cursorset_index: usize,
     paused_total: u64,
     pub unpaused_ms: u64,
     pub paused: bool,
@@ -74,12 +81,15 @@ impl FluxGame {
             noteset_textures: vec![],
             play_area_width: app.window_rect().w() as f32 / PLAY_AREA_SIZE_DIVIDER,
             play_area_height: app.window_rect().w() as f32 / PLAY_AREA_SIZE_DIVIDER,
-            cursor: FluxCursor::new(app, config.cursor_size,PathBuf::from(CURSOR_PATH)),
+            hitset_sounds: vec![],
+            hitset_index: 0,
             missed: 0,
             removed: 0,
             paused: false,
             paused_ms: 0,
+            cursor: FluxCursor::new(config.cursor_size),
             paused_start: 0,
+            cursorset_index: 0,
             paused_total: 0,
             unpaused_ms: 0,
             unpaused_start: 0,
@@ -118,9 +128,9 @@ impl FluxGame {
             if note.z < 0.5 {
                 remove = i as i32;
             }
-            if note.z <= 1.0 && !note.hs {
-                self.audio_manager.play( StaticSoundData::from_file(HITSOUND_PATH, StaticSoundSettings::default()).expect("Failed to play hitsound")).unwrap();
-                note.hs = true;
+            if note.z <= 1.0 && !note.hitsound_played {
+                self.audio_manager.play(self.hitset_sounds[self.hitset_index].clone()).expect("Failed to play hitsound");
+                note.hitsound_played = true;
             }
             if note.z >= 0.5 && note.z <= 1.0 {
                 if Rect::from_xy_wh(
@@ -138,6 +148,8 @@ impl FluxGame {
             } else {
                 self.missed += 1;
             }
+            self.cursorset_index = self.current_notes[remove as usize].cursorset_index;
+            self.hitset_index = self.current_notes[remove as usize].hitset_index;
             self.removed += 1;
             self.current_notes.remove(remove as usize);
         }
@@ -148,10 +160,38 @@ impl FluxGame {
         for e in Path::new(noteset).read_dir().unwrap() {
             let path = e.unwrap().path();
             if let Some(ext) = path.extension() {
-                if ext == "png" {
+                if ext == "png" || ext == "jpg" || ext == "jpeg" {
                     println!("what da tuna? {:?}", path);
                     let tex = wgpu::Texture::from_path(app, String::from(path.to_str().unwrap())).unwrap();
                     self.noteset_textures.push(tex);
+                }
+            }
+        }
+    }
+
+    pub fn load_cursorset(&mut self, app: &App, cursorset: &str) {
+        self.cursor.textures = vec![];
+        for e in Path::new(cursorset).read_dir().unwrap() {
+            let path = e.unwrap().path();
+            if let Some(ext) = path.extension() {
+                if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                    println!("what da tuna?? {:?}", path);
+                    let tex = wgpu::Texture::from_path(app, String::from(path.to_str().unwrap())).unwrap();
+                    self.cursor.textures.push(tex);
+                }
+            }
+        }
+    }
+
+    pub fn load_hitset(&mut self, hitset: &str) {
+        self.hitset_sounds = vec![];
+        for e in Path::new(hitset).read_dir().unwrap() {
+            let path = e.unwrap().path();
+            if let Some(ext) = path.extension() {
+                if ext == "mp3" || ext == "wav" || ext == "ogg" {
+                    println!("what da tuna??? {:?}", path);
+                    let sound = StaticSoundData::from_file(path, StaticSoundSettings::default());
+                    self.hitset_sounds.push(sound.expect("Failed to open hitset"));
                 }
             }
         }
@@ -195,15 +235,18 @@ impl FluxGame {
             }
             let v1 = v.replace("\r", "").replace("\n", "");
             let note_data: Vec<&str> = v1.split("|").collect();
+            println!("{}", self.noteset_textures.len());
             let note = FluxNote{
                 x: note_data[0].parse::<f32>().expect("Failed to parse note x"), 
                 y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 
                 z: 300.0,
-                i: i as u32,
-                st: (note_data[2].parse::<u64>().expect("Failed to parse note st") as f64 - self.approach_time as f64) as u64,
-                ti: i % self.noteset_textures.len(),
+                index: i as u32,
+                spawn_time: (note_data[2].parse::<u64>().expect("Failed to parse note st") as f64 - self.approach_time as f64) as u64,
+                noteset_index: i % self.noteset_textures.len(),
+                hitset_index: i % self.hitset_sounds.len(),
+                cursorset_index: i % self.cursor.textures.len(),
                 ms: note_data[2].parse::<u64>().expect("Failed to parse note ms"),
-                hs: false,
+                hitsound_played: false,
             };
 
             self.notes.push(note);
@@ -235,7 +278,7 @@ impl FluxGame {
             return;
         }
         // println!("{} {}", self.currentms, self.notes[self.note_index].st);
-        if self.currentms < self.notes[self.note_index].st {
+        if self.currentms < self.notes[self.note_index].spawn_time {
             return;
         }
         if self.note_index + 1 >= self.notes.len() {
@@ -262,19 +305,19 @@ impl FluxGame {
             draw.text("PAUSED").color(RED).font_size(50).width(app.window_rect().w());
         }
         for (i, note) in self.current_notes.iter().rev().enumerate() {
-            draw.texture(&self.noteset_textures[note.ti])
+            draw.texture(&self.noteset_textures[note.noteset_index])
             .width((self.play_area_width/3.0) / note.z)
             .height((self.play_area_height/3.0) / note.z)
             .x((-note.x + 1.0) * ((self.play_area_width/3.0) / (note.z)))
                 .y((note.y - 1.0) * ((self.play_area_height/3.0) / (note.z)));
             draw.text(
-                &format!("i: {}, a: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, st: {:.2}", self.note_index, note.i, self.currentms, note.ms, note.x, note.y, note.z, note.st))
+                &format!("i: {}, a: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, st: {:.2}", self.note_index, note.index, self.currentms, note.ms, note.x, note.y, note.z, note.spawn_time))
                 .color(WHITE)
                 .x(10.0)
                 .y(-(app.window_rect().h() as f32 / 2.5) + (10.0 * i as f32))
                 .width(app.window_rect().w() as f32)
                 .left_justify();
         }
-        self.cursor.draw(draw.clone());
+        self.cursor.draw(draw.clone(), self.cursorset_index);
     }
 }

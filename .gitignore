@@ -2,3 +2,4 @@
 .vscode
 /flux-downloads
 /data/maps/*.flux
+/data/flux.log.txt

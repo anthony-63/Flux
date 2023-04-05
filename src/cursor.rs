@@ -1,25 +1,23 @@
-use std::path::PathBuf;
-
 use nannou::{prelude::*, winit::dpi::{PhysicalPosition}};
 
 pub struct FluxCursor {
     pub x: f32,
     pub y: f32,
-    pub texture: wgpu::Texture,
+    pub textures: Vec<wgpu::Texture>,
     size: f32,
 }
 
 impl FluxCursor {
-    pub fn new(app: &App, cursor_size: f32, cursor_path: PathBuf) -> Self {
+    pub fn new(cursor_size: f32) -> Self {
         Self {
             x: 0.0,
             y: 0.0,
             size: cursor_size,
-            texture: wgpu::Texture::from_path(app, cursor_path).expect("Failed to load cursor in data/cursor.png"),
+            textures: vec![],
         }
     }
-    pub fn draw(&self, draw: Draw) {
-        draw.texture(&self.texture).x_y(self.x, self.y).w_h(self.size, self.size);
+    pub fn draw(&self, draw: Draw, index: usize) {
+        draw.texture(&self.textures[index]).x_y(self.x, self.y).w_h(self.size, self.size);
     }
     pub fn cursor_move(&mut self, mp: Point2, sens: f32) {
         self.x = mp.x * sens;
