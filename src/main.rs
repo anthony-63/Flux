@@ -4,12 +4,10 @@ mod cursor;
 
 use game::{FluxGame, FluxConfig};
 use maploader::FluxMaploader;
-use nannou::prelude::*;
+use nannou::{prelude::*, winit::dpi::PhysicalPosition};
 use nannou_egui::{Egui, egui::{self, Button, DragValue, FontDefinitions}};
 
 const TITLE: &'static str = "Flux | ALPHA v0.1";
-pub const WIDTH: u32 = 1280;
-pub const HEIGHT: u32 = 720;
 pub const CURSOR_PATH: &'static str = "data/cursor.png";
 pub const MAP_DIR: &'static str = "data/maps";
 pub const NOTESETS_DIR: &'static str = "data/notesets";
@@ -25,13 +23,15 @@ enum FluxState {
 }
 
 pub const DEFAULT_SETTINGS: FluxConfig = FluxConfig {
-    ar: 20.0,
-    ad: 10.0,
+    ar: 10.0,
+    ad: 6.0,
     fs: 10,
-    sens: 1.0,
+    sens: 0.9,
     volume: 1.0,
-    cursor_size: 60.0,
+    edge_buffer: 20.0,
+    cursor_size: 70.0,
     offset: 0,
+    hitbox: 1.14,
     noteset: "rounded",
 };
 
@@ -46,6 +46,7 @@ pub struct Model {
     show_settings: bool,
     settings: FluxConfig,
     selected_noteset: String,
+    lmx: Point2,
 }
 
 fn model(app: &App) -> Model {
@@ -55,7 +56,7 @@ fn model(app: &App) -> Model {
         .dropped_file(dropped_file)
         .view(view)
         .title(TITLE)
-        .size(WIDTH, HEIGHT)
+        .fullscreen()
         .raw_event(raw_window_event)
         .key_pressed(key_pressed)
         .mouse_moved(mouse_moved)
@@ -73,6 +74,7 @@ fn model(app: &App) -> Model {
         settings: DEFAULT_SETTINGS,
         show_settings: false,
         selected_noteset: String::from(""),
+        lmx: Point2::new(0.0, 0.0),
     }
 }
 
@@ -86,9 +88,12 @@ fn dropped_file(_app: &App, model: &mut Model, path: std::path::PathBuf) {
     // model.game.play_map_audio();
 }
 
-fn mouse_moved(_app: &App, model: &mut Model, mp: Point2) {
+fn mouse_moved(app: &App, model: &mut Model, mp: Point2) {
     if model.captured {
+        let w = app.window(app.window_id()).unwrap();
+        // w.set_cursor_position_points(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0).unwrap();
         model.game.cursor.cursor_move(mp, model.settings.sens);
+        model.lmx = mp;
     }
 }
 
@@ -108,7 +113,6 @@ fn key_pressed(app: &App, model: &mut Model, keycode: Key) {
             model.game.reset();
             model.captured = false;
             let w = app.window(model.window).unwrap();
-            w.set_cursor_grab(model.captured).unwrap();
             w.set_cursor_visible(!model.captured);
         },
         Key::S => {
@@ -163,7 +167,7 @@ fn update(app: &App, model: &mut Model, update: Update) {
         ctx.set_fonts(fonts);
         egui::Window::new("Map list")
             .fixed_pos(egui::Pos2::new(0.0, 0.0))
-            .default_size(egui::Vec2::new(WIDTH as f32, HEIGHT as f32))
+            .default_size(egui::Vec2::new(app.window_rect().w(), app.window_rect().h()))
             .scroll2([false, true])
             .title_bar(false)
             .resizable(false)
@@ -179,7 +183,7 @@ fn update(app: &App, model: &mut Model, update: Update) {
                     model.game.play_map_audio();
                     model.captured = true;
                     let w = app.window(model.window).unwrap();
-                    w.set_cursor_grab(model.captured).unwrap();
+
                     w.set_cursor_visible(!model.captured);
                 }
             }
@@ -237,16 +241,19 @@ fn update(app: &App, model: &mut Model, update: Update) {
     model.game.update_curernt_ms();
     model.game.update_note_index();
     model.game.update_notes();
-    model.game.cursor.lock_cursor_to_play_area();
+    if model.captured {
+        model.game.cursor.lock_real_cursor_to_play_area(app, model.window, model.settings.sens, model.settings.edge_buffer, model.game.play_area_width, model.game.play_area_height);
+        model.game.cursor.lock_cursor_to_play_area(model.settings.sens, model.game.play_area_width, model.game.play_area_height);
+    }
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
     draw.background().color(BLACK);
     match model.state {
-        FluxState::InitGame => { draw.text("Loading maps").font_size(50).width(WIDTH as f32); },
+        FluxState::InitGame => { draw.text("Loading maps").font_size(50).width(app.window_rect().w() as f32); },
         FluxState::MapMenu => model.game.draw_before_loaded_map(draw.clone()),
-        FluxState::PlayMap => model.game.draw_play_game(draw.clone()),
+        FluxState::PlayMap => model.game.draw_play_game(app, draw.clone()),
     };
     // draw.text(&format!("{:.2} FPS", app.fps())).right_justify().y((HEIGHT as f32 / 2.0) - 10.0).color(YELLOW).font_size(20).width(WIDTH as f32);
     draw.to_frame(app, &frame).unwrap();

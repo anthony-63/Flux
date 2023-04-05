@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
-use nannou::prelude::*;
+use nannou::{prelude::*, winit::dpi::{PhysicalPosition}};
 
-use crate::game::{PLAY_AREA_WIDTH, PLAY_AREA_HEIGHT};
 pub struct FluxCursor {
-    x: f32,
-    y: f32,
+    pub x: f32,
+    pub y: f32,
     pub texture: wgpu::Texture,
     size: f32,
 }
@@ -30,8 +29,23 @@ impl FluxCursor {
         self.size = size;
     }
 
-    pub fn lock_cursor_to_play_area(&mut self) {
-        self.x = self.x.clamp(-(PLAY_AREA_WIDTH/2.0), PLAY_AREA_WIDTH/2.0);
-        self.y = self.y.clamp(-(PLAY_AREA_HEIGHT/2.0), PLAY_AREA_HEIGHT/2.0);
+    pub fn lock_cursor_to_play_area(&mut self, sens: f32, pw: f32, ph: f32) {
+        self.x = self.x.clamp(-(pw/2.0) / sens, (pw/2.0) / sens);
+        self.y = self.y.clamp(-(ph/2.0) / sens,( ph/2.0) / sens);
+    }
+
+    pub fn lock_real_cursor_to_play_area(&mut self, app: &App, window: WindowId, sens: f32, edge_buffer: f32, pw: f32, ph: f32) {
+        let w = app.window(window).unwrap();
+        let x = app.mouse.x + (app.window_rect().w() as f32 / 2.0);
+        let y = (app.window_rect().h() as f32 / 2.0) - app.mouse.y;
+        if app.mouse.x > ((pw / 2.0) / sens) + edge_buffer {
+            w.winit_window().set_cursor_position(PhysicalPosition::new(x - 5.0, y)).unwrap();
+        }else if app.mouse.x < -((pw / 2.0) / sens) - edge_buffer {
+            w.winit_window().set_cursor_position(PhysicalPosition::new(x + 5.0, y)).unwrap();
+        } else if app.mouse.y > ((ph / 2.0) / sens) + edge_buffer {
+            w.winit_window().set_cursor_position(PhysicalPosition::new(x, y + 5.0)).unwrap();
+        } else if app.mouse.y < -((ph / 2.0) / sens) - edge_buffer {
+            w.winit_window().set_cursor_position(PhysicalPosition::new(x, y - 5.0)).unwrap();
+        }
     }
 }

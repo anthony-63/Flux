@@ -3,12 +3,10 @@ use std::{time::UNIX_EPOCH, path::{PathBuf, Path}, io::Cursor};
 use kira::{manager::{AudioManager, backend::cpal::CpalBackend, AudioManagerSettings}, sound::static_sound::{StaticSoundData, StaticSoundSettings}, tween::Tween};
 use nannou::prelude::*;
 
-use crate::{maploader::FluxMap, WIDTH, HEIGHT, cursor::FluxCursor, CURSOR_PATH};
+use crate::{maploader::FluxMap, cursor::FluxCursor, CURSOR_PATH};
 
 
 pub const PLAY_AREA_SIZE_DIVIDER: f32 = 2.5;
-pub const PLAY_AREA_WIDTH: f32 = WIDTH as f32 / PLAY_AREA_SIZE_DIVIDER;
-pub const PLAY_AREA_HEIGHT: f32 = PLAY_AREA_WIDTH;
 
 #[derive(Clone, PartialEq)]
 pub struct FluxNote {
@@ -27,7 +25,9 @@ pub struct FluxConfig {
     pub ad: f32, // approach distance
     pub sens: f32,
     pub volume: f64,
+    pub hitbox: f32,
     pub noteset: &'static str,
+    pub edge_buffer: f32,
     pub cursor_size: f32, // cursor size
     pub fs: u32, // fade steps TODO: Implement fade
     pub offset: i64,
@@ -44,7 +44,12 @@ pub struct FluxGame {
     note_index: usize,
     noteset_textures: Vec<wgpu::Texture>,
     current_notes: Vec<FluxNote>,
+    missed: u32,
+    hit: u32,
+    removed: u32,
     pub cursor: FluxCursor,
+    pub play_area_width: f32,
+    pub play_area_height: f32,
 }
 
 impl FluxGame {
@@ -60,7 +65,12 @@ impl FluxGame {
             approach_time: (config.ad as f64 / config.ar as f64) * 1000.0,
             current_notes: vec![],
             noteset_textures: vec![],
+            play_area_width: app.window_rect().w() as f32 / PLAY_AREA_SIZE_DIVIDER,
+            play_area_height: app.window_rect().w() as f32 / PLAY_AREA_SIZE_DIVIDER,
             cursor: FluxCursor::new(app, config.cursor_size,PathBuf::from(CURSOR_PATH)),
+            missed: 0,
+            removed: 0,
+            hit: 0,
         }
     }
 
@@ -74,6 +84,9 @@ impl FluxGame {
         self.audio_manager = AudioManager::<CpalBackend>::new(AudioManagerSettings::default()).expect("Failed to create audio manager");
         self.config = config;
         self.current_notes = vec![];
+        self.hit = 0;
+        self.missed = 0;
+        self.removed = 0;
     }
 
     pub fn reload_settings(&mut self, config: FluxConfig) {
@@ -83,15 +96,31 @@ impl FluxGame {
 
     pub fn update_notes(&mut self) {
         let mut remove: i32 = -1;
+        let mut hit = false;
         for (i, mut note) in self.current_notes.iter_mut().enumerate() {
             let st: f64 = note.ms as f64 - self.approach_time;
             let t: f64 = (note.ms as i64 - self.currentms as i64) as f64 / (note.ms as f64 - st);
             note.z = t as f32 * self.config.ad;
-            if note.z <= 1.0 {
+            if note.z <= 0.5 {
                 remove = i as i32;
+            }
+            if note.z >= 0.5 && note.z <= 1.0 {
+                if Rect::from_xy_wh(
+                    Vec2::new((-note.x + 1.0) * ((self.play_area_width/3.0)), (note.y - 1.0) * ((self.play_area_height/3.0))),
+                    Vec2::new((self.play_area_width/3.0) * self.config.hitbox, (self.play_area_height/3.0) * self.config.hitbox)
+                ).contains(Vec2::new(self.cursor.x, self.cursor.y)) {
+                    remove = i as i32;
+                    hit = true;
+                }
             }
         }
         if remove != -1 {
+            if hit {
+                self.hit += 1;
+            } else {
+                self.missed += 1;
+            }
+            self.removed += 1;
             self.current_notes.remove(remove as usize);
         }
     }
@@ -180,27 +209,28 @@ impl FluxGame {
     pub fn draw_before_loaded_map(&self, draw: Draw) {
     }
 
-    pub fn draw_play_game(&self, draw: Draw) {
+    pub fn draw_play_game(&self, app: &App, draw: Draw) {
         // draw play area
-        draw.rect().width(PLAY_AREA_WIDTH as f32).height(PLAY_AREA_HEIGHT as f32).x_y(0.0, 0.0).no_fill().stroke(WHITE).stroke_weight(2.0);
-        draw.text(&format!("{} - {}", self.map.artist, self.map.song_name)).color(WHITE).y(HEIGHT as f32 / 2.2).font_size(25).width(WIDTH as f32);
-
+        draw.text(&format!("{} - {}", self.map.artist, self.map.song_name)).color(WHITE).y(app.window_rect().h() as f32 / 2.7).font_size(25).width(app.window_rect().w() as f32);
+        
         for (i, note) in self.current_notes.iter().rev().enumerate() {
             draw.texture(&self.noteset_textures[note.ti])
-                .width((PLAY_AREA_WIDTH/3.0) / note.z)
-                .height((PLAY_AREA_HEIGHT/3.0) / note.z)
-                .x((-note.x + 1.0) * ((PLAY_AREA_WIDTH/3.0) / (note.z)))
-                .y((note.y - 1.0) * ((PLAY_AREA_HEIGHT/3.0) / (note.z)));
-
-            draw.text(
-                &format!("i: {}, a: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, st: {:.2}", self.note_index, note.i, self.currentms, note.ms, note.x, note.y, note.z, note.st))
-                .color(WHITE)
-                .x(10.0)
-                .y(-(HEIGHT as f32 / 2.5) + (10.0 * i as f32))
-                .width(WIDTH as f32)
-                .left_justify();
-        }
+            .width((self.play_area_width/3.0) / note.z)
+            .height((self.play_area_height/3.0) / note.z)
+            .x((-note.x + 1.0) * ((self.play_area_width/3.0) / (note.z)))
+            .y((note.y - 1.0) * ((self.play_area_height/3.0) / (note.z)));
+        
+        draw.text(
+            &format!("i: {}, a: {}, ms: {}, nms: {}, x: {}, y: {}, z: {:.1}, st: {:.2}", self.note_index, note.i, self.currentms, note.ms, note.x, note.y, note.z, note.st))
+            .color(WHITE)
+            .x(10.0)
+            .y(-(app.window_rect().h() as f32 / 2.5) + (10.0 * i as f32))
+            .width(app.window_rect().w() as f32)
+            .left_justify();
+    }
         self.cursor.draw(draw.clone());
-
+    
+        draw.rect().width(self.play_area_width as f32).height(self.play_area_height as f32).x_y(0.0, 0.0).no_fill().stroke(WHITE).stroke_weight(2.0);
+        draw.text(&format!("Notes:\n{}/{}", self.hit, self.removed)).width(self.play_area_width as f32).x(self.play_area_width + 40.0).left_justify().y(-(self.play_area_height / 2.0) + 100.0).color(WHITE).font_size(30);
     }
 }
