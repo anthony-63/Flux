@@ -33,8 +33,9 @@ async fn main() {
         } else {
             continue;
         };
+        let id = id.as_str().unwrap().to_string();
 
-        let download_file_to = download_folder.join(format!("{}.flux", id.as_str().unwrap()));
+        let download_file_to = download_folder.join(format!("{}.flux", &id));
 
         if download_file_to.exists() {
             println!("{} already exists, skipping.", id);
@@ -42,7 +43,7 @@ async fn main() {
         }
 
         downloads.push(save(
-            id.to_string(),
+            id,
             download_file_to,
             client.clone(),
             &sema,
@@ -60,6 +61,7 @@ async fn save(id: String, path_to: PathBuf, client: Client, sema: &Semaphore) {
         }
 
         let map_bytes = map_bytes.unwrap();
+        println!("downloaded {:?} ({:?} bytes)", id, map_bytes.len());
         let sspm_map = SSPM::try_from(&map_bytes[..]);
 
         match sspm_map {
@@ -76,8 +78,13 @@ async fn save(id: String, path_to: PathBuf, client: Client, sema: &Semaphore) {
     }
 }
 async fn download(id: String, client: Client, sema: &Semaphore) -> reqwest::Result<bytes::Bytes> {
-    let _ = sema.acquire().await;
+    let _a = sema.acquire().await;
     let url = format!("{DB}/maps/{id}.sspm");
+    let d = client.get(url).send().await?;
+    let d= d.bytes().await;
+
+
+    
     // fake error
-    Ok(client.get(url).send().await?.bytes().await?)
+    d
 }
