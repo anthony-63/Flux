@@ -4,13 +4,14 @@ mod cursor;
 
 use game::{FluxGame, FluxConfig};
 use maploader::FluxMaploader;
-use nannou::{prelude::*, winit::dpi::PhysicalPosition};
+use nannou::prelude::*;
 use nannou_egui::{Egui, egui::{self, Button, DragValue, FontDefinitions}};
 
 const TITLE: &'static str = "Flux | ALPHA v0.1";
 pub const CURSOR_PATH: &'static str = "data/cursor.png";
 pub const MAP_DIR: &'static str = "data/maps";
 pub const NOTESETS_DIR: &'static str = "data/notesets";
+pub const HITSOUND_PATH: &'static str = "data/hit.wav";
 fn main() {
     nannou::app(model).update(update).loop_mode(LoopMode::RefreshSync).run();
 }
@@ -47,6 +48,7 @@ pub struct Model {
     settings: FluxConfig,
     selected_noteset: String,
     lmx: Point2,
+    map_search: String,
 }
 
 fn model(app: &App) -> Model {
@@ -70,6 +72,7 @@ fn model(app: &App) -> Model {
         captured: false,
         menu_gui:  Egui::from_window(&w),
         maps: vec![],
+        map_search: String::from(""),
         notesets: vec![],
         settings: DEFAULT_SETTINGS,
         show_settings: false,
@@ -78,7 +81,7 @@ fn model(app: &App) -> Model {
     }
 }
 
-fn dropped_file(_app: &App, model: &mut Model, path: std::path::PathBuf) {
+fn dropped_file(_app: &App, _model: &mut Model, _path: std::path::PathBuf) {
     // if model.state != FluxState::MapMenu {
     //     return;
     // }
@@ -88,9 +91,8 @@ fn dropped_file(_app: &App, model: &mut Model, path: std::path::PathBuf) {
     // model.game.play_map_audio();
 }
 
-fn mouse_moved(app: &App, model: &mut Model, mp: Point2) {
+fn mouse_moved(_app: &App, model: &mut Model, mp: Point2) {
     if model.captured {
-        let w = app.window(app.window_id()).unwrap();
         // w.set_cursor_position_points(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0).unwrap();
         model.game.cursor.cursor_move(mp, model.settings.sens);
         model.lmx = mp;
@@ -107,17 +109,29 @@ fn key_pressed(app: &App, model: &mut Model, keycode: Key) {
             w.set_cursor_grab(model.captured).unwrap();
             w.set_cursor_visible(!model.captured);
         },
-        Key::Q => {
-            model.game.stop_audio();
+        Key::Back => {
+            model.game.pause_audio();
             model.state = FluxState::MapMenu;
             model.game.reset();
             model.captured = false;
             let w = app.window(model.window).unwrap();
             w.set_cursor_visible(!model.captured);
         },
-        Key::S => {
+        Key::F1 => {
             model.show_settings = !model.show_settings;
-        }
+        },
+        Key::Space => {
+            if model.state != FluxState::PlayMap || model.game.unpaused_ms < 1000 {
+                return;
+            }
+            model.game.paused = !model.game.paused;
+            if model.game.paused {
+                model.game.pause_game();
+            }
+            if !model.game.paused {
+                model.game.play_game();
+            }
+        },
         _ => {}, 
     }
 }
@@ -165,29 +179,6 @@ fn update(app: &App, model: &mut Model, update: Update) {
         gui.set_elapsed_time(update.since_start);
         let ctx = gui.begin_frame();
         ctx.set_fonts(fonts);
-        egui::Window::new("Map list")
-            .fixed_pos(egui::Pos2::new(0.0, 0.0))
-            .default_size(egui::Vec2::new(app.window_rect().w(), app.window_rect().h()))
-            .scroll2([false, true])
-            .title_bar(false)
-            .resizable(false)
-            .show(&ctx, |ui| {
-
-            ui.label("maps:");
-            
-            for i in model.maps.clone().into_iter() {
-                if ui.add(Button::new(i.clone())).clicked() {
-                    let map = FluxMaploader::load_map(i.clone());
-                    model.state = FluxState::PlayMap;
-                    model.game.insert_map(map);
-                    model.game.play_map_audio();
-                    model.captured = true;
-                    let w = app.window(model.window).unwrap();
-
-                    w.set_cursor_visible(!model.captured);
-                }
-            }
-        });
 
         if model.show_settings {
             egui::Window::new("Settings").resizable(false).show(&ctx, |ui| {
@@ -202,6 +193,13 @@ fn update(app: &App, model: &mut Model, update: Update) {
                     ui.label("AD: ");
                     if ui.add(DragValue::new(&mut model.settings.ad).speed(0.1).clamp_range(0.0..=500.0)).changed() {
                         model.game.reload_settings(model.settings.clone());
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Cursor Size: ");
+                    if ui.add(DragValue::new(&mut model.settings.cursor_size).speed(0.1).clamp_range(0.0..=500.0)).changed() {
+                        model.game.cursor.change_cursor_size(model.settings.cursor_size);
                     }
                 });
 
@@ -233,17 +231,53 @@ fn update(app: &App, model: &mut Model, update: Update) {
             });
         }
 
+        egui::Window::new("Map list")
+            .fixed_pos(egui::Pos2::new(0.0, 0.0))
+            .default_size(egui::Vec2::new(app.window_rect().w(), app.window_rect().h()))
+            .scroll2([false, true])
+            .title_bar(false)
+            .resizable(false)
+            .show(&ctx, |ui| {
+
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut model.map_search);
+            });
+
+
+            ui.label("maps:");
+            for i in model.maps.clone().into_iter() {
+                let mut contains: Vec<bool> = vec![];
+                for s in model.map_search.clone().as_str().split(" ").into_iter() {
+                    if !s.is_empty() {
+                        contains.push(i.contains(s));
+                    }
+                }
+                if contains.contains(&false) && !model.map_search.is_empty() {
+                    continue;
+                }
+                if ui.add(Button::new(i.clone())).clicked() {
+                    let map = FluxMaploader::load_map(i.clone());
+                    model.state = FluxState::PlayMap;
+                    model.game.insert_map(map);
+                    model.game.play_map_audio();
+                    model.captured = true;
+                    let w = app.window(model.window).unwrap();
+
+                    w.set_cursor_visible(!model.captured);
+                }
+            }
+        });
     }
     if model.state != FluxState::PlayMap {
         return;
     }
 
-    model.game.update_curernt_ms();
+    model.game.update_ms();
     model.game.update_note_index();
     model.game.update_notes();
     if model.captured {
         model.game.cursor.lock_real_cursor_to_play_area(app, model.window, model.settings.sens, model.settings.edge_buffer, model.game.play_area_width, model.game.play_area_height);
-        model.game.cursor.lock_cursor_to_play_area(model.settings.sens, model.game.play_area_width, model.game.play_area_height);
+        model.game.cursor.lock_cursor_to_play_area(model.game.play_area_width, model.game.play_area_height);
     }
 }
 

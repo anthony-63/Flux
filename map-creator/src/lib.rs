@@ -2,7 +2,6 @@ pub mod convert;
 use std::{path::PathBuf, io::Cursor};
 
 use binrw::BinWriterExt;
-use convert::sspm::SSPM;
 pub struct FluxMap {
     pub artist:String,
     pub song_name:String,

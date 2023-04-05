@@ -1,3 +1,4 @@
 /target
 .vscode
 /flux-downloads
+/data/maps/*.flux
