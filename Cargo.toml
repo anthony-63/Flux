@@ -18,4 +18,5 @@ kira = "*"
 [workspace]
 members = [
     "map-creator",
+    "map-downloader"
 ]
