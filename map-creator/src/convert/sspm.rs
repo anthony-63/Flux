@@ -17,7 +17,6 @@ impl TryFrom<Vec<u8>> for SSPM {
         let mut cur = Cursor::new(data.as_slice());
         let sig : [u8;4] = cur.read_le().or(Err(MapParseError::BadFormat(cur.position())))?;
         if sig != [0x53,0x53,0x2b,0x6d] {
-            println!("sig: {:?}",sig);
             return Err(MapParseError::UnknownSig(sig.to_vec()));
         }
         let version : u16 = cur.read_le().or(Err(MapParseError::BadFormat(cur.position())))?;

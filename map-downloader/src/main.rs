@@ -1,10 +1,10 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use futures::{future::join_all};
 use map_creator::{FluxMap, convert::{sspm::SSPM}};
 use mapdata::{DbRoot, MapRoot};
 use reqwest::Client;
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, time::{Timeout, timeout}};
 
 mod mapdata;
 const DB : &'static str = "https://cdn.soundspaceplus.dev/";
@@ -34,11 +34,13 @@ async fn main() {
     let _ = join_all(downloads).await;
 }
 async fn save(map_data:MapRoot,path_to:PathBuf, client:Client, sema : &Semaphore) {
-    if let Ok(map_datad) = download(map_data.id.clone(), client, sema).await {
-        // let mut sspmw = path_to.clone();
-        // sspmw.set_extension("sspm");
-        // std::fs::write(sspmw, &map_datad).expect("aa");
-
+    if let Ok(map_datad) = timeout(Duration::from_secs(60), download(map_data.id.clone(), client, sema)).await {
+        
+        if let Err(e) = map_datad {
+            println!("failed to download {:?} {:?}",map_data.id,e);
+            return;
+        }
+        let map_datad = map_datad.unwrap();
         let map_datan = SSPM::try_from(map_datad);
         match map_datan {
 
@@ -47,15 +49,18 @@ async fn save(map_data:MapRoot,path_to:PathBuf, client:Client, sema : &Semaphore
                 println!("saved {:?}",&path_to)
             }     
             Err(e) => {
-                println!("failed to parse {:?} {:?}",&path_to,e)
+                println!("failed to parse {:?}. why = {:?}",map_data.id,e)
             }
         } 
 
+    } else {
+        println!("{:?} took too long to download..",map_data.id)
     }
 }
 async fn download(id:String, client:Client, sema : &Semaphore) -> Result<Vec<u8>,()> {
     let _ = sema.acquire().await;
     let url = format!("{DB}/maps/{id}.sspm");
-    let map_data = client.get(url).send().await.unwrap().bytes().await.unwrap().to_vec();
+    // fake error
+    let map_data = client.get(url).send().await.or(Err(()))?.bytes().await.or(Err(()))?.to_vec();
     Ok(map_data)
 }
