@@ -1,6 +1,6 @@
 use std::{time::UNIX_EPOCH, path::Path, io::Cursor};
 
-use kira::{manager::{AudioManager, backend::cpal::CpalBackend, AudioManagerSettings}, sound::static_sound::{StaticSoundData, StaticSoundSettings}, tween::Tween};
+use kira::{manager::{AudioManager, backend::cpal::CpalBackend, AudioManagerSettings}, sound::static_sound::{StaticSoundData, StaticSoundSettings}, tween::Tween, PlaybackRate};
 use nannou::prelude::*;
 
 use crate::{maploader::FluxMap, cursor::FluxCursor};
@@ -32,6 +32,7 @@ pub struct FluxConfig {
     pub noteset: &'static str,
     pub edge_buffer: f32,
     pub cursor_size: f32, // cursor size
+    pub speed: f64,
     pub fs: u32, // fade steps TODO: Implement fade
     pub offset: i64,
     pub hitset: &'static str,
@@ -39,9 +40,9 @@ pub struct FluxConfig {
 }
 
 pub struct FluxGame {
-    map: FluxMap,
+    pub map: FluxMap,
     config: FluxConfig,
-    currentms: u64,
+    pub currentms: u64,
     startms: u64,
     paused_ms: u64,
     paused_start: u64,
@@ -53,9 +54,9 @@ pub struct FluxGame {
     hitset_index: usize,
     noteset_textures: Vec<wgpu::Texture>,
     current_notes: Vec<FluxNote>,
-    missed: u32,
-    hit: u32,
-    removed: u32,
+    pub missed: u32,
+    pub hit: u32,
+    pub removed: u32,
     unpaused_start: u64,
     cursorset_index: usize,
     paused_total: u64,
@@ -240,7 +241,7 @@ impl FluxGame {
                 y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 
                 z: 300.0,
                 index: i as u32,
-                spawn_time: (note_data[2].parse::<u64>().expect("Failed to parse note st") as f64 - self.approach_time as f64) as u64,
+                spawn_time: (note_data[2].parse::<u64>().expect("Failed to parse note st") as f64 - (self.approach_time as f64 * self.config.speed)) as u64,
                 noteset_index: i % self.noteset_textures.len(),
                 hitset_index: i % self.hitset_sounds.len(),
                 cursorset_index: i % self.cursor.textures.len(),
@@ -255,9 +256,9 @@ impl FluxGame {
 
     pub fn play_map_audio(&mut self) {
         let cursor = Cursor::new(self.map.mp3_data.clone());
-        let sound_data = StaticSoundData::from_cursor(cursor, StaticSoundSettings::default()).expect("Failed to create sound data");
+        let sound_data = StaticSoundData::from_cursor(cursor, StaticSoundSettings::default().playback_rate(PlaybackRate::Factor(self.config.speed))).expect("Failed to create sound data");
         self.audio_manager.play(sound_data.clone()).unwrap();
-        self.startms = (std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64 + self.config.offset) as u64;
+        self.startms = ((std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64 + self.config.offset) as f64 * self.config.speed) as u64;
         self.unpaused_start = (std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64 + self.config.offset) as u64;
     }
 
@@ -266,10 +267,14 @@ impl FluxGame {
             self.paused_ms = std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as u64 - self.paused_start;
             return;
         }
-        let current_time = std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as u64 - self.paused_total;
+        let current_time = (std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as f64 * self.config.speed) as u64 - self.paused_total;
         self.unpaused_ms = std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as u64 - self.unpaused_start;
         self.currentms = current_time - self.startms;
         // println!("currentms: {}", self.currentms);
+    }
+
+    pub fn set_speed(&mut self, speed: f64) {
+        self.config.speed = speed;
     }
 
     pub fn update_note_index(&mut self) {

@@ -4,6 +4,7 @@ mod cursor;
 
 use std::path::Path;
 
+use discord_rich_presence::{DiscordIpcClient, DiscordIpc, activity::{self}};
 use game::{FluxGame, FluxConfig};
 use log::LevelFilter;
 use log4rs::{append::file::FileAppender, encode::pattern::PatternEncoder, Config, config::{Appender, Root}};
@@ -45,6 +46,7 @@ pub const DEFAULT_SETTINGS: FluxConfig = FluxConfig {
     fs: 10,
     sens: 0.9,
     volume: 1.0,
+    speed: 1.0,
     edge_buffer: 20.0,
     cursor_size: 70.0,
     offset: 0,
@@ -57,6 +59,7 @@ pub const DEFAULT_SETTINGS: FluxConfig = FluxConfig {
 pub struct Model {
     window: window::Id,
     game: FluxGame,
+    rpc: DiscordIpcClient,
     state: FluxState,
     captured: bool,
     maps: Vec<String>,
@@ -71,6 +74,7 @@ pub struct Model {
     selected_hitset: String,
     lmx: Point2,
     map_search: String,
+    update_rpc: bool,
 }
 
 fn model(app: &App) -> Model {
@@ -87,6 +91,9 @@ fn model(app: &App) -> Model {
         .build()
         .unwrap();
     let w = app.window(window).unwrap();
+    let mut rpc = DiscordIpcClient::new("1093315881104310352").unwrap();
+    rpc.connect().unwrap();
+
     Model {
         window,
         game: FluxGame::new(app, DEFAULT_SETTINGS),
@@ -96,10 +103,12 @@ fn model(app: &App) -> Model {
         maps: vec![],
         map_search: String::from(""),
         notesets: vec![],
+        rpc,
+        update_rpc: false,
         cursorsets: vec![],
         hitsets: vec![],
         settings: DEFAULT_SETTINGS,
-        show_settings: false,
+        show_settings: true,
         selected_noteset: String::from(""),
         selected_cursorset: String::from(""),
         selected_hitset: String::from(""),
@@ -142,6 +151,7 @@ fn key_pressed(app: &App, model: &mut Model, keycode: Key) {
             model.captured = false;
             let w = app.window(model.window).unwrap();
             w.set_cursor_visible(!model.captured);
+            model.update_rpc = true;
         },
         Key::F1 => {
             model.show_settings = !model.show_settings;
@@ -218,9 +228,21 @@ fn update(app: &App, model: &mut Model, update: Update) {
         model.game.load_noteset(app, &model.selected_noteset);
         model.game.load_hitset(&model.selected_hitset);
         model.game.load_cursorset(app, &model.selected_cursorset);
-        model.state = FluxState::MapMenu
+        model.state = FluxState::MapMenu;
+        model.update_rpc = true;
     }
     if model.state == FluxState::MapMenu {
+        if model.update_rpc {
+            let payload = activity::Activity::new()
+                .details("In map menu")
+                .state("Choosing map")
+                .buttons(vec![discord_rich_presence::activity::Button::new("Join Flux", "https://discord.gg/C4fgSxabQt")])
+                .assets(
+                    activity::Assets::new()
+                        .large_image("flux"));
+            model.rpc.set_activity(payload).unwrap();
+            model.update_rpc = false;
+        }
         let mut fonts = FontDefinitions::default();
         fonts.family_and_size.insert(egui::TextStyle::Body, (egui::FontFamily::Proportional, 22.0));
         fonts.family_and_size.insert(egui::TextStyle::Button, (egui::FontFamily::Proportional, 22.0));
@@ -265,6 +287,13 @@ fn update(app: &App, model: &mut Model, update: Update) {
                 ui.horizontal(|ui| {
                     ui.label("Sensitivity: ");
                     ui.add(DragValue::new(&mut model.settings.sens).speed(0.1));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Speed: ");
+                    if ui.add(DragValue::new(&mut model.settings.speed).speed(0.01).clamp_range(0.0..=10.0)).changed() {
+                        model.game.set_speed(model.settings.clone().speed);
+                    }
                 });
 
                 ui.horizontal(|ui| {
@@ -338,6 +367,7 @@ fn update(app: &App, model: &mut Model, update: Update) {
                 if ui.add(Button::new(Path::new(&i.clone()).file_name().unwrap().to_str().unwrap().to_string())).clicked() {
                     let map = FluxMaploader::load_map(i);
                     model.state = FluxState::PlayMap;
+                    model.update_rpc = true;
                     model.game.insert_map(map);
                     model.game.play_map_audio();
                     model.captured = true;
@@ -350,6 +380,33 @@ fn update(app: &App, model: &mut Model, update: Update) {
     }
     if model.state != FluxState::PlayMap {
         return;
+    }
+
+    if model.game.currentms % 2500 == 0 {
+        model.update_rpc = true;
+    }
+
+    if model.update_rpc {
+        let details = format!("{} - {}", 
+                model.game.map.artist, 
+                model.game.map.song_name);
+
+        let state = format!("{}:{:02} - {:.02}% - {} Misses - {:.02}x", 
+            ((model.game.currentms / 1000) / 60), 
+            (model.game.currentms / 1000) % 60, 
+            (model.game.hit as f32 / model.game.removed as f32) * 100.0, 
+            model.game.missed,
+            model.settings.speed);
+
+        let payload = activity::Activity::new()
+            .details(&details)
+            .state(&state)
+            .buttons(vec![discord_rich_presence::activity::Button::new("Join Flux", "https://discord.gg/C4fgSxabQt")])
+            .assets(
+                activity::Assets::new()
+                    .large_image("flux"));
+        model.rpc.set_activity(payload).unwrap();
+        model.update_rpc = false;
     }
 
     model.game.update_ms();
