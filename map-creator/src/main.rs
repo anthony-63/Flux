@@ -1,14 +1,12 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, Args};
-use map_creator::{FluxMap, convert::sspmv1::SSPM1};
+use clap::{Parser, Subcommand, Args, ValueEnum};
+use map_creator::{FluxMap, convert::{sspmv1::SSPM1, sspm::SSPM, fluxlegacy::FluxLegacy}};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct CliArguments {
     /// where to save the map file - if bulk then it is treated as a folder
-    #[arg(short,long)]
-    out_path : PathBuf,
     #[command(subcommand)]
     command: Commands
 }
@@ -17,10 +15,12 @@ enum Commands {
     /// create multiple maps from another format in a folder.
     Bulk(BulkConvert),
     /// create a map with provided data
-    Single(SingleConvert)
+    Create(SingleCreate),
+    /// convert a map from another format
+    Convert(SingleConvert)
 }
 #[derive(Args)]
-struct SingleConvert {
+struct SingleCreate {
     /// name of the artist
     #[arg(short,long)]
     artist : String,
@@ -36,18 +36,37 @@ struct SingleConvert {
     /// path to the audio file
     #[arg(short='j',long)]
     audio_path : PathBuf,
+    out_path : PathBuf,
+
 }
 #[derive(Args)]
 struct BulkConvert {
     /// folder to read from
-    #[arg(short,long)]
     in_path : PathBuf,
+    out_path : PathBuf,
+
+}
+#[derive(Args)]
+struct SingleConvert {
+    /// folder to read from
+    in_path : PathBuf,
+    in_format : MapFormat,
+    out_path : PathBuf,
+
+}
+
+#[derive(ValueEnum,Debug,Clone,Eq,PartialEq, PartialOrd, Ord)]
+enum MapFormat {
+    /// Flux Legacy format
+    FluxLegacy,
+    /// SSPM format (Sound Space Plus)
+    SSPM,
 }
 fn main() {
     let gargs : CliArguments = CliArguments::parse();
 
     match gargs.command {
-        Commands::Single(args) => {
+        Commands::Create(args) => {
             if !args.map_path.exists() {
                 panic!("Map file does not exist!");
             }
@@ -62,7 +81,7 @@ fn main() {
             m.add_metadata("artist".to_string(), args.artist.as_bytes().to_vec());
             m.add_music(audio_data);
             m.add_difficulty("default".to_string(), FluxMap::convert_ss_to_flux(&map_data));
-            m.save(gargs.out_path);
+            m.save(args.out_path);
 
         }
         Commands::Bulk(args) => {
@@ -73,10 +92,22 @@ fn main() {
                     if fname.ends_with(".sspm") {
                         let fdata = std::fs::read(entry.path()).expect("unable to read file");
                         let flux:FluxMap = SSPM1::try_from(fdata).expect("unable to parse data").into();
-                        flux.save(gargs.out_path.join(fname.replace(".sspm",".flux")));
+                        flux.save(args.out_path.join(fname.replace(".sspm",".flux")));
                     }
                 }
             }
+        }
+        Commands::Convert(args) => {
+            let fdata = std::fs::read(args.in_path).expect("unable to read file");
+            let flux:FluxMap = match args.in_format {
+                MapFormat::FluxLegacy => {
+                    FluxLegacy::try_from(fdata.as_slice()).expect("unable to parse data").into()
+                }
+                MapFormat::SSPM => {
+                    SSPM::try_from(fdata.as_slice()).expect("unable to parse data").into()
+                }
+            };
+            flux.save(args.out_path);
         }
     }
 }

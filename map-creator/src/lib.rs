@@ -29,14 +29,14 @@ const FLUX_SIG : [u8;4] = [b'F',b'L',b'U',b'X'];
 
 #[binrw]
 #[br(big)]
-struct SizedVec {
+pub(crate)struct SizedVec {
     len:u32,
     #[br(count=len)]
     data:Vec<u8>,
 }
 #[binrw]
 #[br(big)]
-struct SizedString {
+pub(crate)struct SizedString {
     len:u16,
     #[br(count=len)]
     data:Vec<u8>,
@@ -172,9 +172,9 @@ impl FluxMap {
         let mut notes : Vec<FluxNote> = Vec::new();
         for enotes in itr {
             let note = enotes.split("|").collect::<Vec<&str>>();
-            let time = note[0].parse::<u32>().unwrap();
-            let x = note[1].parse::<f32>().unwrap();
-            let y = note[2].parse::<f32>().unwrap();
+            let x = note[0].parse::<f32>().unwrap();
+            let y = note[1].parse::<f32>().unwrap();
+            let time = note[2].parse::<u32>().unwrap();
             notes.push(FluxNote::new(time,x,y));
         }
         notes
