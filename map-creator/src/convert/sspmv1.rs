@@ -3,7 +3,7 @@ use std::io::{BufReader, Cursor, BufRead, Read, Seek, SeekFrom};
 use binrw::BinReaderExt;
 use thiserror::Error;
 
-use crate::FluxMap;
+use crate::{FluxMap, FluxNote};
 
 pub struct SSPM1 {
     pub music_data : Vec<u8>,
@@ -11,6 +11,7 @@ pub struct SSPM1 {
     pub id : String,
     pub name : String,
     pub creator : String,
+    pub image_data : Option<Vec<u8>>,
 }
 pub struct SSPM1NoteF {
     pub time : u32,
@@ -54,6 +55,7 @@ impl TryFrom<Cursor<&[u8]>> for SSPM1 {
         let mut mid = String::new();
         let mut mname = String::new();
         let mut mcreator = String::new();
+        let mut image_data = None;
         let offset = {
             
             let mut r =BufReader::new(&mut data);
@@ -74,7 +76,9 @@ impl TryFrom<Cursor<&[u8]>> for SSPM1 {
         match img_type {
             2 => {
                 let len : u64 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
-                r.seek(SeekFrom::Current(len as i64)).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                let mut d = vec![0;len as usize];
+                r.read_exact(&mut d).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                image_data = Some(d);
             }
             1 => {
                 let _height : u16 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
@@ -82,7 +86,9 @@ impl TryFrom<Cursor<&[u8]>> for SSPM1 {
                 let _mipmaps : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
                 let _format : u8 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
                 let len : u64 = r.read_le().or(Err(MapParseErrorV1::BadFormat(r.position())))?;
-                r.seek(SeekFrom::Current(len as i64)).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                let mut d = vec![0;len as usize];
+                r.read_exact(&mut d).or(Err(MapParseErrorV1::BadFormat(r.position())))?;
+                image_data = Some(d);
             }
             _ => {}
         }
@@ -127,32 +133,33 @@ impl TryFrom<Cursor<&[u8]>> for SSPM1 {
             id : mid,
             name : mname,
             creator : mcreator,
+            image_data,
         })
     }
 }
 
 impl Into<FluxMap> for SSPM1 {
     fn into(self) -> FluxMap {
-        let mut normalise_notes = String::new();
-        normalise_notes.push('0');
+        let mut normalise_notes : Vec<FluxNote> = vec![];
         for note in self.map_data {
-            normalise_notes.push(',');
             match note {
                 SSPM1Note::Float(x) => {
-                    normalise_notes.push_str(&format!("{}|{}|{}",x.x,x.y,x.time));
+                    normalise_notes.push(FluxNote::new(x.time, x.x, x.y))
                 }
                 SSPM1Note::Int(x) => {
-                    normalise_notes.push_str(&format!("{}|{}|{}",x.x,x.y,x.time));
+                    normalise_notes.push(FluxNote::new(x.time, x.x as f32, x.y as f32))
                 }
             }
         };
-        FluxMap {
-            artist : "<unknown>".to_string(),
-            mapper : self.creator,
-            song_name : self.name,
-            music_data : self.music_data,
-            map_data : normalise_notes.as_bytes().to_vec(),
+        let mut m = FluxMap::new();
+        m.add_metadata("mapper".to_string(), self.creator.as_bytes().to_vec());
+        m.add_metadata("song_name".to_string(), self.name.as_bytes().to_vec());
+        m.add_difficulty("default".to_string(), normalise_notes);
+        m.add_music(self.music_data);
+        if let Some(x) = self.image_data {
+            m.add_image(x);
         }
+        m
 
 
 

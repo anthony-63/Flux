@@ -56,13 +56,13 @@ fn main() {
             }
             let map_data = std::fs::read(&args.map_path).expect("Failed to read map file. SHOULD NOT HAPPEN???");
             let audio_data = std::fs::read(&args.audio_path).expect("Failed to read audio file. SHOULD NOT HAPPEN???");
-            FluxMap {
-                artist:args.artist,
-                song_name:args.song_name,
-                mapper:args.mapper,
-                map_data,
-                music_data:audio_data
-            }.save(gargs.out_path);
+            let mut m = FluxMap::new();
+            m.add_metadata("mapper".to_string(), args.mapper.as_bytes().to_vec());
+            m.add_metadata("song_name".to_string(), args.song_name.as_bytes().to_vec());
+            m.add_metadata("artist".to_string(), args.artist.as_bytes().to_vec());
+            m.add_music(audio_data);
+            m.add_difficulty("default".to_string(), FluxMap::convert_ss_to_flux(&map_data));
+            m.save(gargs.out_path);
 
         }
         Commands::Bulk(args) => {
