@@ -1,8 +1,10 @@
+pub mod tests;
 pub mod convert;
 use std::{path::PathBuf, io::Cursor, collections::HashMap};
 
 use binrw::{BinWriterExt, BinReaderExt, binrw, VecArgs};
 use thiserror::Error;
+#[derive(Debug)]
 pub struct FluxMap {
     pub version:u8,
     pub meta : HashMap<String,Vec<u8>>,
@@ -10,6 +12,7 @@ pub struct FluxMap {
     pub music_data:Vec<u8>,
     pub image_data:Option<Vec<u8>>,
 }
+#[derive(Debug)]
 pub struct FluxNote {
     pub time:u32,
     pub x:f32,
@@ -93,23 +96,24 @@ impl FluxMap {
                 let difficulty_count = r.read_be::<u16>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                 for _ in 0..difficulty_count {
                     let key : SizedString = r.read_be().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
-                    let note_count = r.read_be::<u32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
+                    let note_count = r.read_be::<u64>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                     let mut notes = Vec::with_capacity(note_count as usize);
                     for _ in 0..note_count {
                         let time = r.read_be::<u32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                         let x = r.read_be::<f32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                         let y = r.read_be::<f32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
-                        notes.push(FluxNote::new(time,x,y));
+                        let note = FluxNote::new(time,x,y);
+                        notes.push(note);
                     }
                     difficulties.insert(key.to_string(),notes);
                 }
-                let music = r.read_be::<SizedVec>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                 let image_len = r.read_be::<u32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                 let image_data = if image_len == 0 {
                     None
                 } else {
                     Some(r.read_be_args(VecArgs::builder().count(image_len as usize).finalize()).unwrap())
                 };
+                let music = r.read_be::<SizedVec>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
                 Ok(Self {
                     version,
                     meta,

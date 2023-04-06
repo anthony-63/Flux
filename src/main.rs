@@ -1,14 +1,13 @@
-mod maploader;
 mod game;
 mod cursor;
 
 use std::path::Path;
 
 use discord_rich_presence::{DiscordIpcClient, DiscordIpc, activity::{self}};
+use flux_map::FluxMap;
 use game::{FluxGame, FluxConfig};
 use log::LevelFilter;
 use log4rs::{append::file::FileAppender, encode::pattern::PatternEncoder, Config, config::{Appender, Root}};
-use maploader::FluxMaploader;
 use nannou::prelude::*;
 use nannou_egui::{Egui, egui::{self, Button, DragValue, FontDefinitions}};
 
@@ -365,7 +364,9 @@ fn update(app: &App, model: &mut Model, update: Update) {
                     continue;
                 }
                 if ui.add(Button::new(Path::new(&i.clone()).file_name().unwrap().to_str().unwrap().to_string())).clicked() {
-                    let map = FluxMaploader::load_map(i);
+                    let map_path = Path::new(&i);
+                    println!("Loading map: {:?}", map_path);
+                    let map = FluxMap::open(map_path.to_path_buf()).unwrap();
                     model.state = FluxState::PlayMap;
                     model.update_rpc = true;
                     model.game.insert_map(map);
@@ -387,9 +388,12 @@ fn update(app: &App, model: &mut Model, update: Update) {
     }
 
     if model.update_rpc {
+        let artist =String::from_utf8_lossy(model.game.map.meta.get("artist").unwrap());
+        let title = String::from_utf8_lossy(model.game.map.meta.get("song_name").unwrap());
+
         let details = format!("{} - {}", 
-                model.game.map.artist, 
-                model.game.map.song_name);
+                artist, 
+                title);
 
         let state = format!("{}:{:02} - {:.02}% - {} Misses - {:.02}x", 
             ((model.game.currentms / 1000) / 60), 

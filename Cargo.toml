@@ -27,7 +27,7 @@ env_logger = "0.10.0"
 log-panics = "2.1.0"
 log4rs = "1.2.0"
 discord-rich-presence = "0.2.3"
-
+flux-map = { path = "./flux-map" }
 [workspace]
 members = [
     "flux-map",

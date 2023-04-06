@@ -1,9 +1,10 @@
 use std::{time::UNIX_EPOCH, path::Path, io::Cursor};
 
+use flux_map::FluxMap;
 use kira::{manager::{AudioManager, backend::cpal::CpalBackend, AudioManagerSettings}, sound::static_sound::{StaticSoundData, StaticSoundSettings}, tween::Tween, PlaybackRate};
 use nannou::prelude::*;
 
-use crate::{maploader::FluxMap, cursor::FluxCursor};
+use crate::{cursor::FluxCursor};
 
 
 pub const PLAY_AREA_SIZE_DIVIDER: f32 = 2.5;
@@ -70,7 +71,7 @@ pub struct FluxGame {
 impl FluxGame {
     pub fn new(app: &App, config: FluxConfig) -> Self {
         Self {
-            map: FluxMap::empty(),
+            map: FluxMap::new(),
             currentms: 0,
             startms: 0,
             notes: vec![],
@@ -100,7 +101,7 @@ impl FluxGame {
 
     pub fn reset(&mut self) {
         let config = self.config.clone();
-        self.map = FluxMap::empty();
+        self.map = FluxMap::new();
         self.currentms = 0;
         self.startms = 0;
         self.notes = vec![];
@@ -230,22 +231,18 @@ impl FluxGame {
 
     pub fn insert_map(&mut self, map: FluxMap) {
         self.map = map;
-        for (i, v) in self.map.map_data.split(",").enumerate() {
-            if i < 1 { 
-                continue; // ignore roblox map id
-            }
-            let v1 = v.replace("\r", "").replace("\n", "");
-            let note_data: Vec<&str> = v1.split("|").collect();
+        for (i, v) in self.map.difficulties.get("default").unwrap().iter().enumerate() {
+            let ms = v.time as u64;
             let note = FluxNote{
-                x: note_data[0].parse::<f32>().expect("Failed to parse note x"), 
-                y: note_data[1].parse::<f32>().expect("Failed to parse note y"), 
+                x: v.x,
+                y: v.y,
                 z: 300.0,
                 index: i as u32,
-                spawn_time: (note_data[2].parse::<u64>().expect("Failed to parse note st") as f64 - (self.approach_time as f64 * self.config.speed)) as u64,
+                spawn_time: (ms as f64 - (self.approach_time as f64 * self.config.speed)) as u64,
                 noteset_index: i % self.noteset_textures.len(),
                 hitset_index: i % self.hitset_sounds.len(),
                 cursorset_index: i % self.cursor.textures.len(),
-                ms: note_data[2].parse::<u64>().expect("Failed to parse note ms"),
+                ms: ms,
                 hitsound_played: false,
             };
 
@@ -255,7 +252,7 @@ impl FluxGame {
     }
 
     pub fn play_map_audio(&mut self) {
-        let cursor = Cursor::new(self.map.mp3_data.clone());
+        let cursor = Cursor::new(self.map.music_data.clone());
         let sound_data = StaticSoundData::from_cursor(cursor, StaticSoundSettings::default().playback_rate(PlaybackRate::Factor(self.config.speed))).expect("Failed to create sound data");
         self.audio_manager.play(sound_data.clone()).unwrap();
         self.startms = ((std::time::SystemTime::now().duration_since(UNIX_EPOCH).expect("Time traveler?").as_millis() as i64 + self.config.offset) as f64 * self.config.speed) as u64;
@@ -299,8 +296,10 @@ impl FluxGame {
     
     pub fn draw_play_game(&self, app: &App, draw: Draw) {
         // draw play area
+        let artist =String::from_utf8_lossy(self.map.meta.get("artist").unwrap());
+        let title = String::from_utf8_lossy(self.map.meta.get("song_name").unwrap());
         
-        draw.text(&format!("{} - {}", self.map.artist, self.map.song_name)).color(WHITE).y(app.window_rect().h() as f32 / 2.7).font_size(25).width(app.window_rect().w() as f32);
+        draw.text(&format!("{} - {}", artist, title)).color(WHITE).y(app.window_rect().h() as f32 / 2.7).font_size(25).width(app.window_rect().w() as f32);
         draw.rect().width(self.play_area_width as f32).height(self.play_area_height as f32).x_y(0.0, 0.0).no_fill().stroke(WHITE).stroke_weight(2.0);
         draw.text(&format!("Notes:\n{}/{}", self.hit, self.removed)).width(self.play_area_width as f32).x(self.play_area_width + 40.0).left_justify().y(-(self.play_area_height / 2.0) + 100.0).color(WHITE).font_size(30);
         draw.text(&format!("Accuracy:\n{:.2}%", (self.hit as f32/self.removed as f32) * 100.0)).width(self.play_area_width as f32).x(self.play_area_width + 40.0).left_justify().y(-(self.play_area_height / 2.0) + 200.0).color(WHITE).font_size(30);
