@@ -1,4 +1,4 @@
-use std::io::{BufReader, Cursor, BufRead, Read, Seek, SeekFrom};
+use std::io::{BufReader, Cursor, BufRead, Read, Seek};
 
 use binrw::BinReaderExt;
 use thiserror::Error;

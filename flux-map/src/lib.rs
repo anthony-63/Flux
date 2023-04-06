@@ -107,13 +107,13 @@ impl FluxMap {
                     }
                     difficulties.insert(key.to_string(),notes);
                 }
-                let image_len = r.read_be::<u32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
+                let image_len = r.read_be::<u32>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadImage)))?;
                 let image_data = if image_len == 0 {
                     None
                 } else {
                     Some(r.read_be_args(VecArgs::builder().count(image_len as usize).finalize()).unwrap())
                 };
-                let music = r.read_be::<SizedVec>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadDifficulty)))?;
+                let music = r.read_be::<SizedVec>().or_else(|_| Err(FluxMapError::BadFormat(FluxBadFormatType::BadMusic)))?;
                 Ok(Self {
                     version,
                     meta,

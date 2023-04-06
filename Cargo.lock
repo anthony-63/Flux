@@ -1853,6 +1853,7 @@ dependencies = [
  "bytes",
  "flux-map",
  "futures",
+ "num_cpus",
  "reqwest",
  "serde",
  "serde_json",

@@ -24,7 +24,7 @@ async fn main() {
     std::fs::create_dir_all(&download_folder).expect("unable to create downloads folder");
 
     // using semaphores to limit the amount of concurrent downloads
-    let sema = Semaphore::new(16);
+    let sema = Semaphore::new(num_cpus::get());
     let mut downloads = Vec::new();
 
     for map_data in db_root.values() {

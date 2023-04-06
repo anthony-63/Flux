@@ -34,7 +34,7 @@ impl TryFrom<Cursor<&[u8]>> for FluxLegacy {
 impl TryFrom<&[u8]> for FluxLegacy {
     type Error = FluxLegacyError;
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        let mut cur = Cursor::new(data);
+        let cur = Cursor::new(data);
         Self::try_from(cur)
     }
 }
