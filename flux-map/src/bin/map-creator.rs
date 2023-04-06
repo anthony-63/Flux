@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, Args, ValueEnum};
-use map_creator::{FluxMap, convert::{sspmv1::SSPM1, sspm::SSPM, fluxlegacy::FluxLegacy}};
+use flux_map::{FluxMap, convert::{sspmv1::SSPM1, sspm::SSPM, fluxlegacy::FluxLegacy}};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

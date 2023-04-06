@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use futures::future::join_all;
-use map_creator::{convert::sspm::SSPM, FluxMap};
+use flux_map::{convert::sspm::SSPM, FluxMap};
 use reqwest::Client;
 use serde_json::Value;
 use tokio::{sync::Semaphore, time::timeout};

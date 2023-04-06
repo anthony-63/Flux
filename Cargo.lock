@@ -1083,6 +1083,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "flux-map"
+version = "0.1.0"
+dependencies = [
+ "binrw",
+ "clap",
+ "thiserror",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1837,21 +1846,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "map-creator"
-version = "0.1.0"
-dependencies = [
- "binrw",
- "clap",
- "thiserror",
-]
-
-[[package]]
 name = "map-downloader"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "flux-map",
  "futures",
- "map-creator",
  "reqwest",
  "serde",
  "serde_json",
