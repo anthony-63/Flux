@@ -1074,12 +1074,22 @@ version = "0.1.0"
 dependencies = [
  "discord-rich-presence",
  "env_logger",
+ "flux-map",
  "kira",
  "log",
  "log-panics",
  "log4rs",
  "nannou",
  "nannou_egui",
+]
+
+[[package]]
+name = "flux-map"
+version = "0.1.0"
+dependencies = [
+ "binrw",
+ "clap",
+ "thiserror",
 ]
 
 [[package]]
@@ -1837,21 +1847,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "map-creator"
-version = "0.1.0"
-dependencies = [
- "binrw",
- "clap",
- "thiserror",
-]
-
-[[package]]
 name = "map-downloader"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "flux-map",
  "futures",
- "map-creator",
+ "num_cpus",
  "reqwest",
  "serde",
  "serde_json",

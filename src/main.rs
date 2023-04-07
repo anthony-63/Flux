@@ -207,9 +207,12 @@ fn update(app: &App, model: &mut Model, update: Update) {
     }
 
     if model.update_rpc {
+        let artist =String::from_utf8_lossy(model.game.map.meta.get("artist").unwrap());
+        let title = String::from_utf8_lossy(model.game.map.meta.get("song_name").unwrap());
+
         let details = format!("{} - {}", 
-                model.game.map.artist, 
-                model.game.map.song_name);
+                artist, 
+                title);
 
         let state = format!("{}:{:02} - {:.02}% - {} Misses - {:.02}x", 
             ((model.game.time_manager.song_timer.current_ms / 1000) / 60), 
