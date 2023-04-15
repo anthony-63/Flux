@@ -1,0 +1,4 @@
+.vscode/
+bin/*.exe
+data/maps/*.flux
+data/flux.log.txt
